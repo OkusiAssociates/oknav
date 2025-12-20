@@ -11,7 +11,7 @@ OKnav consists of two components:
 | Component | Purpose |
 |-----------|---------|
 | `ok_master` | Individual server SSH handler (invoked via symlinks) |
-| `ok` | Cluster orchestrator for multi-server commands |
+| `oknav` | Cluster orchestrator for multi-server commands |
 
 ### Architecture
 
@@ -25,7 +25,7 @@ ok_master  <------- srv1, srv2, srv3 (symlinks)
 resolve_alias()    SSH to target server
      |
      v
-ok                 # Cluster operations on (oknav) servers
+oknav              # Cluster operations on (oknav) servers
 ```
 
 ## Installation
@@ -40,7 +40,7 @@ This installs OKnav to standard system locations:
 
 | Location | Contents |
 |----------|----------|
-| `/usr/local/share/oknav/` | Package files (ok, ok_master, common.inc.sh) |
+| `/usr/local/share/oknav/` | Package files (oknav, ok_master, common.inc.sh) |
 | `/usr/local/bin/` | Executable symlinks |
 | `/etc/oknav/hosts.conf` | Server configuration |
 | `/usr/local/share/man/man1/oknav.1` | Manual page |
@@ -78,7 +78,7 @@ server3.example.com   srv3 server3   (oknav)
 ### 2. Install Symlinks
 
 ```bash
-sudo ok install
+sudo oknav install
 ```
 
 This creates symlinks in `/usr/local/bin` for each alias in `hosts.conf`.
@@ -91,8 +91,8 @@ srv1 uptime              # SSH to server1
 srv2 -r                  # Root shell on server2
 
 # Cluster operations
-ok uptime                # Run on all (oknav) servers
-ok -p df -h              # Parallel execution
+oknav uptime             # Run on all (oknav) servers
+oknav -p df -h           # Parallel execution
 ```
 
 ## Configuration: hosts.conf
@@ -180,13 +180,13 @@ srv1 'ps aux | grep nginx'
 
 ## Cluster Operations
 
-The `ok` orchestrator runs commands across all servers marked with `(oknav)` in `hosts.conf`.
+The `oknav` orchestrator runs commands across all servers marked with `(oknav)` in `hosts.conf`.
 
 ### Usage
 
 ```bash
-ok [OPTIONS] <command>        # Execute on all servers
-ok install [OPTIONS]          # Manage symlinks
+oknav [OPTIONS] <command>     # Execute on all servers
+oknav install [OPTIONS]       # Manage symlinks
 ```
 
 ### Options
@@ -204,29 +204,29 @@ ok install [OPTIONS]          # Manage symlinks
 
 ```bash
 # Sequential execution (default)
-ok uptime                # Check uptime on all servers
-ok df -h                 # Check disk space
-ok systemctl status ssh  # Check service status
+oknav uptime             # Check uptime on all servers
+oknav df -h              # Check disk space
+oknav systemctl status ssh  # Check service status
 
 # Parallel execution
-ok -p uptime             # All servers simultaneously
-ok -p free -m            # Memory status in parallel
+oknav -p uptime          # All servers simultaneously
+oknav -p free -m         # Memory status in parallel
 
 # With timeout
-ok -t 60 apt update      # 60-second timeout
-ok -pt 10 uptime         # Parallel with 10-second timeout
+oknav -t 60 apt update   # 60-second timeout
+oknav -pt 10 uptime      # Parallel with 10-second timeout
 
 # Exclusions
-ok -x srv1 uptime        # Exclude srv1 from this run
-ok -x srv1 -x srv2 df    # Exclude multiple servers
+oknav -x srv1 uptime     # Exclude srv1 from this run
+oknav -x srv1 -x srv2 df # Exclude multiple servers
 
 # Debug mode
-ok -D hostname           # Shows discovered servers
-ok -Dp echo test         # Debug with parallel execution
+oknav -D hostname        # Shows discovered servers
+oknav -Dp echo test      # Debug with parallel execution
 
 # Complex commands
-ok "mysql -e 'SHOW DATABASES;'"
-ok -p "ps aux | grep apache"
+oknav "mysql -e 'SHOW DATABASES;'"
+oknav -p "ps aux | grep apache"
 ```
 
 ### Install Subcommand
@@ -234,7 +234,7 @@ ok -p "ps aux | grep apache"
 Manage symlinks in `/usr/local/bin`:
 
 ```bash
-ok install [OPTIONS]
+oknav install [OPTIONS]
 ```
 
 | Option | Description |
@@ -246,13 +246,13 @@ ok install [OPTIONS]
 
 ```bash
 # Create/update symlinks
-sudo ok install
+sudo oknav install
 
 # Preview what would happen
-ok install --dry-run
+oknav install --dry-run
 
 # Full cleanup and reinstall
-sudo ok install --remove-stale --clean-local
+sudo oknav install --remove-stale --clean-local
 ```
 
 ## Output Format
@@ -271,7 +271,7 @@ $ srv1 uptime
 Prefixed output showing which server produced which output:
 
 ```
-$ ok uptime
+$ oknav uptime
 +++srv1:
  09:15:23 up 45 days,  3:22,  2 users,  load average: 0.15, 0.12, 0.10
 
@@ -304,7 +304,7 @@ $ ok uptime
 
 **"Command not found"**
 - Ensure symlinks exist: `ls -la /usr/local/bin/srv*`
-- Run `sudo ok install` to create symlinks
+- Run `sudo oknav install` to create symlinks
 
 **SSH connection failures**
 - Verify SSH key authentication: `ssh user@server echo OK`
@@ -319,7 +319,7 @@ $ ok uptime
 **"No servers found"**
 - Verify `hosts.conf` has entries with `(oknav)` option
 - Check `(local-only:HOST)` restrictions match current hostname
-- Use `ok -D` to see server discovery
+- Use `oknav -D` to see server discovery
 
 **local-only restrictions**
 - Servers with `(local-only:HOST)` only work from that specific host
@@ -329,13 +329,13 @@ $ ok uptime
 
 ```bash
 # Show discovered servers and settings
-ok -D hostname
+oknav -D hostname
 
 # Verify individual server resolution
 srv1 -D whoami
 
 # Quick connectivity test with short timeout
-ok -t 5 echo OK
+oknav -t 5 echo OK
 ```
 
 ## Technical Details
@@ -362,7 +362,7 @@ ok -t 5 echo OK
 
 ```
 /usr/local/share/oknav/
-├── ok              # Cluster orchestrator
+├── oknav           # Cluster orchestrator
 ├── ok_master       # Individual server handler
 ├── common.inc.sh   # Shared configuration and functions
 └── VERSION         # Version file
@@ -371,7 +371,7 @@ ok -t 5 echo OK
 └── hosts.conf      # Server configuration
 
 /usr/local/bin/
-├── ok              # Symlink to ok
+├── oknav           # Symlink to oknav
 ├── ok_master       # Symlink to ok_master
 └── srv1, srv2...   # Server alias symlinks
 ```
