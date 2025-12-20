@@ -155,17 +155,24 @@ install_oknav() {
 
   info "Installing OKnav..."
 
-  # Create directories
+  # Create directories with explicit permissions
   info "Creating directories..."
-  mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$MAN_DIR" "$COMPLETION_DIR"
+  install -d -m 755 "$INSTALL_DIR"       # Package directory (world-readable)
+  install -d -m 750 "$CONFIG_DIR"        # Config directory (group-only, hides server names)
+  mkdir -p "$MAN_DIR" "$COMPLETION_DIR"  # Usually pre-exist
 
-  # Install package files
+  # Install executable scripts (755)
   info "Installing package files to $INSTALL_DIR..."
-  for file in ok ok_master common.inc.sh; do
+  for file in ok ok_master; do
     get_source_file "$file" > "$TEMP_DIR/$file" || exit 1
     install -m 755 "$TEMP_DIR/$file" "$INSTALL_DIR/$file"
     success "Installed $file"
   done
+
+  # Install library file (644 - sourced, not executed)
+  get_source_file "common.inc.sh" > "$TEMP_DIR/common.inc.sh" || exit 1
+  install -m 644 "$TEMP_DIR/common.inc.sh" "$INSTALL_DIR/common.inc.sh"
+  success "Installed common.inc.sh"
 
   # Create VERSION file
   echo "$VERSION" > "$INSTALL_DIR/VERSION"
