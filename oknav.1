@@ -1,0 +1,349 @@
+.\" OKnav System Manual Page
+.\" Generated: 2025-12-20
+.\"
+.TH OKNAV 1 "December 2025" "OKnav 2.2.1" "User Commands"
+.\"
+.SH NAME
+oknav \- SSH orchestration system for multi-server command execution
+.\"
+.SH SYNOPSIS
+.B ok
+.RI [ OPTIONS ]
+.I command
+.br
+.B ok install
+.RI [ OPTIONS ]
+.br
+.I ALIAS
+.RI [ OPTIONS ]
+.RI [ command... ]
+.\"
+.SH DESCRIPTION
+.B OKnav
+is a lightweight SSH orchestration system providing two modes of operation:
+.TP
+.B Cluster Operations
+The
+.B ok
+command executes commands across all servers marked with the
+.B (oknav)
+option in
+.IR hosts.conf .
+Supports sequential (default) and parallel execution modes.
+.TP
+.B Individual Server Access
+Symlinks to
+.B ok_master
+(e.g.,
+.IR srv1 ", " srv2 )
+provide enhanced SSH access to specific servers with user switching
+and directory preservation.
+.PP
+Server mappings are defined in
+.I hosts.conf
+which associates FQDNs with aliases and options.
+.\"
+.SH COMMANDS
+.SS ok \- Cluster Orchestrator
+Execute commands across all servers with the
+.B (oknav)
+option in hosts.conf.
+.PP
+.B ok
+.RI [ OPTIONS ]
+.I command
+.RS
+Execute
+.I command
+on all cluster servers. By default, servers are processed sequentially.
+Use
+.B \-p
+for parallel execution.
+.RE
+.PP
+.B ok install
+.RI [ OPTIONS ]
+.RS
+Create symlinks in
+.I /usr/local/bin
+for all aliases defined in hosts.conf.
+.RE
+.\"
+.SS ok_master \- Individual Server Handler
+Invoked through symlinks, provides SSH access to individual servers.
+The target server is determined by the invocation name (the symlink name).
+.PP
+.I ALIAS
+.RI [ OPTIONS ]
+.RI [ command... ]
+.RS
+Connect to the server associated with
+.I ALIAS
+in hosts.conf. If no command is provided, starts an interactive shell.
+.RE
+.\"
+.SH OPTIONS
+.SS ok Options
+.TP
+.BR \-p ", " \-\-parallel
+Execute commands in parallel across all servers. Output is collected
+and displayed in server order after all complete.
+.TP
+.BR \-t ", " \-\-timeout " " \fISECS\fR
+Set connection timeout in seconds. Default is 30.
+.TP
+.BR \-x ", " \-\-exclude\-host " " \fIHOST\fR
+Exclude
+.I HOST
+from this execution. Can be specified multiple times.
+.TP
+.BR \-D ", " \-\-debug
+Enable debug output showing server discovery, execution mode, and settings.
+.TP
+.BR \-V ", " \-\-version
+Display version information and exit.
+.TP
+.BR \-h ", " \-\-help
+Display help message and exit.
+.\"
+.SS ok install Options
+.TP
+.BR \-n ", " \-\-dry\-run
+Show what would be done without making changes.
+.TP
+.B \-\-remove\-stale
+Remove symlinks in
+.I /usr/local/bin
+that point to ok_master but are not defined in hosts.conf.
+.TP
+.B \-\-clean\-local
+Remove symlinks from the script directory (except
+.BR ok ).
+.TP
+.BR \-h ", " \-\-help
+Display install help and exit.
+.\"
+.SS ok_master Options (Individual Server)
+.TP
+.BR \-r ", " \-\-root
+Connect as root user. Shortcut for
+.BR "\-u root" .
+.TP
+.BR \-u ", " \-\-user " " \fIUSER\fR
+Connect as
+.IR USER .
+Default is the current user.
+.TP
+.BR \-d ", " \-\-dir
+Preserve current working directory on remote server. The directory
+must exist on the remote system.
+.TP
+.BR \-D ", " \-\-debug
+Show connection parameters (ALIAS, USER, SERVER, CMD, etc.) to stderr.
+.TP
+.BR \-V ", " \-\-version
+Display version information and exit.
+.TP
+.BR \-h ", " \-\-help
+Display help message and exit.
+.\"
+.SH CONFIGURATION
+.SS hosts.conf Format
+Server mappings are defined in
+.I hosts.conf
+located in the same directory as the scripts.
+.PP
+.RS
+.I FQDN
+.I primary-alias
+.RI [ alias2... ]
+.RI [( options )]
+.RE
+.PP
+.TP
+.I FQDN
+The fully qualified domain name or hostname of the server.
+.TP
+.I primary-alias
+The first alias is the canonical name used for cluster operations.
+.TP
+.I alias2...
+Additional aliases for the same server.
+.TP
+.I options
+Comma-separated options in parentheses.
+.\"
+.SS hosts.conf Options
+.TP
+.B oknav
+Include this server in cluster operations. Only the
+.B first
+(primary) alias is used when running
+.BR ok .
+.TP
+.B exclude
+Exclude from cluster operations even if
+.B oknav
+is set. The server remains accessible directly.
+.TP
+.BI local\-only: HOSTNAME
+Restrict access to this server. Connection is only permitted when
+the current machine's hostname matches
+.IR HOSTNAME .
+.\"
+.SS hosts.conf Example
+.PP
+.nf
+.RS
+# Production servers
+server1.example.com   srv1 server1   (oknav)
+server2.example.com   srv2 server2   (oknav)
+
+# Development (restricted to workstation)
+devbox.local          dev devbox     (oknav,local-only:workstation)
+
+# Backup (excluded from cluster ops)
+backup.local          bak backup     (oknav,exclude)
+
+# Ad-hoc server (direct access only)
+adhoc.example.com     adhoc
+.RE
+.fi
+.\"
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error, including unknown alias or hosts.conf issues.
+.TP
+.B 22
+Invalid command-line option.
+.TP
+.B 124
+Connection timeout reached.
+.TP
+.B 125
+Timeout command error.
+.TP
+.B 126
+Command not found (server unreachable).
+.\"
+.SH ENVIRONMENT
+.TP
+.B XDG_RUNTIME_DIR
+Used for temporary files in parallel mode. Falls back to
+.I /tmp
+if unavailable.
+.TP
+.B USER
+Default SSH user for ok_master connections.
+.TP
+.B HOSTNAME
+Current machine hostname, used for
+.B local-only
+constraint checking.
+.\"
+.SH FILES
+.TP
+.I hosts.conf
+Server configuration file defining FQDNs, aliases, and options.
+.TP
+.I ok
+Cluster orchestrator script.
+.TP
+.I ok_master
+Individual server handler script. Symlinks to this file provide
+server-specific access commands.
+.TP
+.I common.inc.sh
+Shared configuration and parsing functions.
+.TP
+.I /usr/local/bin/*
+Installed symlinks created by
+.BR "ok install" .
+.TP
+.I oknav.bash_completion
+Bash completion script for tab completion support.
+.\"
+.SH EXAMPLES
+.SS Individual Server Access
+.TP
+.B srv1
+Start interactive shell on srv1.
+.TP
+.B srv1 uptime
+Execute
+.I uptime
+on srv1.
+.TP
+.B srv1 \-r
+Start root shell on srv1.
+.TP
+.B srv1 \-u admin whoami
+Execute
+.I whoami
+as admin user.
+.TP
+.B srv1 \-rd
+Root shell preserving current directory.
+.TP
+.B srv1 \-D hostname
+Debug mode showing connection parameters.
+.\"
+.SS Cluster Operations
+.TP
+.B ok uptime
+Check uptime on all cluster servers (sequential).
+.TP
+.B ok \-p uptime
+Check uptime on all servers in parallel.
+.TP
+.B ok \-t 60 'apt update'
+Update packages with 60-second timeout.
+.TP
+.B ok \-x srv1 hostname
+Execute on all servers except srv1.
+.TP
+.B ok \-pt 10 uptime
+Parallel execution with 10-second timeout.
+.TP
+.B ok \-D hostname
+Debug mode showing discovered servers.
+.\"
+.SS Symlink Management
+.TP
+.B sudo ok install
+Create symlinks in /usr/local/bin for all aliases.
+.TP
+.B ok install \-\-dry\-run
+Preview symlink changes without making them.
+.TP
+.B sudo ok install \-\-remove\-stale
+Remove orphaned symlinks not in hosts.conf.
+.\"
+.SS Output Format
+Cluster operations prefix each server's output:
+.PP
+.nf
+.RS
+$ ok uptime
++++srv1:
+ 10:15:23 up 45 days,  3:22,  2 users
+
++++srv2:
+ 10:15:24 up 32 days, 14:55,  0 users
+.RE
+.fi
+.\"
+.SH SEE ALSO
+.BR ssh (1),
+.BR sudo (8),
+.BR timeout (1)
+.\"
+.SH BUGS
+Report bugs at the project repository.
+.\"
+.SH AUTHORS
+OKnav was developed for server cluster management.
