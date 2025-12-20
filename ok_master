@@ -1,0 +1,134 @@
+#!/bin/bash
+# OKnav System - Individual server SSH connection handler
+#
+set -euo pipefail
+shopt -s inherit_errexit
+
+SCRIPT_PATH=$(readlink -en -- "$0")
+SCRIPT_DIR=${SCRIPT_PATH%/*}
+SCRIPT_NAME=${SCRIPT_PATH##*/}
+readonly -- SCRIPT_PATH SCRIPT_DIR SCRIPT_NAME
+
+#shellcheck source=common.inc.sh
+source "$SCRIPT_DIR"/common.inc.sh || exit 1
+
+
+# Configuration variables
+declare -- SERVER=${0##*/}         # !! Target server derived from invocation name (NOT readlink'ed)
+declare -- USER=${USER:-root}      # SSH user (defaults to current user, fallback to root)
+declare -- CURDIR=''               # Directory to change to on remote (empty = no change)
+declare -- CMD=''                  # Command to execute (empty = interactive shell)
+declare -- SSHOPTS=''              # Additional SSH options
+declare -i DEBUG=0                 # Debug mode flag (0=off, 1=on)
+
+usage() {
+  cat <<EOT
+$SERVER $VERSION - SSH connection handler
+
+Provides convenient SSH access to configured servers for administrators.
+
+This script is invoked through symbolic links and automatically determines
+the target server based on the invocation name. It supports user switching,
+directory preservation, and both interactive and command execution modes.
+
+Security Note: This tool is designed for administrators with existing
+SSH access. Commands are passed through to SSH without modification
+(intended behavior).
+
+Usage:
+  $SERVER [OPTIONS] [COMMAND...]    # Execute command on remote server
+  $SERVER [OPTIONS]                 # Start interactive shell session
+
+Options:
+  -r, --root        Connect as root user (shortcut for -u root)
+  -u, --user USER   Connect as specified user (default: ${USER:-current user})
+  -d, --dir         Preserve current working directory on remote server
+  -D, --debug       Enable debug output (shows connection parameters)
+  -V, --version     Display version information and exit
+  -h, --help        Display this help message and exit
+
+Examples:
+  $SERVER uptime                    # Execute 'uptime' command
+  $SERVER -u admin ls -la /etc      # List /etc as admin user
+  $SERVER -r systemctl status       # Check services as root
+  $SERVER -d                        # Interactive shell in current directory
+  $SERVER -rd                       # Root shell in current directory
+  $SERVER -u deploy -d git pull     # Pull code as deploy user
+  $SERVER -D whoami                 # Debug mode to see connection details
+
+Notes:
+  - Commands containing special characters should be quoted
+  - Interactive sessions require no command arguments
+  - The -d option requires the same directory to exist on the remote server
+  - Debug mode (-D) prints connection parameters to stderr
+  - Server mappings are defined in hosts.conf
+
+EOT
+}
+
+# Parse command line options using getopts-style processing
+# Supports both short (-r) and long (--root) option formats
+while (($#)); do
+  case $1 in
+    -r|--root)
+      USER=root ;;  # Shortcut for -u root
+    -u|--user)
+      shift
+      USER="${1:-$USER}" ;;  # Use specified user or keep current
+    -d|--dir)
+      CURDIR="$PWD" ;;  # Will cd to this directory on remote
+    -h|--help) usage; exit 0 ;;
+    -V|--version) echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
+    -D|--debug)
+      DEBUG=1 ;;  # Enable connection parameter output
+    -[rudhVD]*)
+      # Handle combined short options (e.g., -rd becomes -r -d)
+      #shellcheck disable=SC2046
+      set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}";;
+    -*)
+      die 22 "Invalid option ${1@Q}" ;;
+    *)
+      # Non-option arguments form the remote command
+      CMD="$*"
+      break ;;
+  esac
+  shift
+done
+
+# Resolve server alias to FQDN using hosts.conf
+# If not in hosts.conf, use alias directly as hostname (allows ad-hoc servers)
+load_hosts_conf "$SCRIPT_DIR/hosts.conf"
+declare -- ALIAS="$SERVER"  # Keep original alias for messages
+SERVER=$(resolve_alias "$ALIAS") || {
+  case $? in
+    1) SERVER="$ALIAS" ;;  # Not in hosts.conf - use alias as hostname
+    2) exit 0 ;;           # Constraint violation (local-only) - message already printed
+  esac
+}
+
+# Set up for interactive or command execution mode
+if [[ -z "$CMD" ]]; then
+  # Interactive mode: start a shell session
+  CMD='exec bash'
+  SSHOPTS='-t'  # Allocate pseudo-terminal for interactive use
+fi
+
+# Prepend directory change if -d option was used
+# Note: Directory must exist on remote server or command will fail
+# Using printf %q for proper escaping of special characters in path
+[[ -z "$CURDIR" ]] || CMD="cd $(printf %q "$CURDIR") && $CMD"
+
+# Debug output: show all connection parameters
+if ((DEBUG)); then
+  debug "Connection parameters:"
+  #shellcheck disable=SC2090,SC2089
+  >&2 declare -p ALIAS USER SERVER CURDIR CMD SSHOPTS
+fi
+
+# Execute SSH connection
+# - exec replaces this process (no subshell overhead)
+# - SSHOPTS may contain -t for interactive sessions
+# - Commands are passed through without modification
+exec /usr/bin/ssh $SSHOPTS "${USER}@${SERVER}" "$CMD"
+
+#fin

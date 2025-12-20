@@ -1,0 +1,136 @@
+#!/bin/bash
+# Bash completion for OKnav System
+# Source this file or copy to /etc/bash_completion.d/oknav
+#
+# Provides tab completion for:
+#   - ok (cluster orchestrator)
+#   - ok_master and all symlinks (individual server access)
+
+# Get the directory where OKnav is installed
+_oknav_get_script_dir() {
+    local script_path
+    script_path=$(command -v ok 2>/dev/null) || return 1
+    script_path=$(realpath "$script_path" 2>/dev/null) || return 1
+    dirname "$script_path"
+}
+
+# Get list of server aliases from hosts.conf
+_oknav_get_aliases() {
+    local script_dir hosts_file
+    script_dir=$(_oknav_get_script_dir) || return 1
+    hosts_file="$script_dir/hosts.conf"
+    [[ -f "$hosts_file" ]] || return 1
+
+    # Parse hosts.conf: extract all aliases (skip FQDN, skip options)
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Remove options (stuff in parentheses)
+        line="${line%\(*}"
+        # Get all fields after the first (FQDN)
+        read -r _fqdn aliases <<< "$line"
+        echo "$aliases"
+    done < "$hosts_file"
+}
+
+# Completion for ok_master derivatives (ok0, ok1, srv1, etc.)
+_ok_master_completion() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    opts="-r --root -u --user -d --dir -D --debug -V --version -h --help"
+
+    case "$prev" in
+        -u|--user)
+            # Complete with system users
+            COMPREPLY=( $(compgen -u -- "$cur") )
+            return 0
+            ;;
+        *)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+            else
+                # Complete with commands for remote execution
+                COMPREPLY=( $(compgen -c -- "$cur") )
+            fi
+            return 0
+            ;;
+    esac
+}
+
+# Completion for ok script (cluster orchestrator)
+_ok_completion() {
+    local cur prev opts subcommands aliases
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    opts="-p --parallel -t --timeout -x --exclude-host -D --debug -h --help -V --version"
+    subcommands="install"
+
+    case "$prev" in
+        -t|--timeout)
+            COMPREPLY=( $(compgen -W "5 10 15 30 60 120 300" -- "$cur") )
+            return 0
+            ;;
+        -x|--exclude-host)
+            # Complete with server aliases from hosts.conf
+            aliases=$(_oknav_get_aliases 2>/dev/null)
+            COMPREPLY=( $(compgen -W "$aliases" -- "$cur") )
+            return 0
+            ;;
+        install)
+            # Install subcommand options
+            COMPREPLY=( $(compgen -W "-n --dry-run --remove-stale --clean-local -h --help" -- "$cur") )
+            return 0
+            ;;
+        *)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+            elif [[ "${COMP_WORDS[1]}" == "install" ]]; then
+                # Already in install subcommand
+                COMPREPLY=( $(compgen -W "-n --dry-run --remove-stale --clean-local -h --help" -- "$cur") )
+            else
+                # Complete with subcommands and remote commands
+                COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") $(compgen -c -- "$cur") )
+            fi
+            return 0
+            ;;
+    esac
+}
+
+# Register completions
+# Core scripts
+complete -F _ok_completion ok
+complete -F _ok_master_completion ok_master
+
+# Dynamic registration: find all symlinks pointing to ok_master
+_oknav_register_completions() {
+    local script_dir ok_master_path symlink name
+    script_dir=$(_oknav_get_script_dir) || return 1
+    ok_master_path="$script_dir/ok_master"
+
+    # Check /usr/local/bin for symlinks to ok_master
+    for symlink in /usr/local/bin/*; do
+        [[ -L "$symlink" ]] || continue
+        [[ "$(readlink "$symlink")" == "$ok_master_path" ]] || continue
+        name="${symlink##*/}"
+        complete -F _ok_master_completion "$name"
+    done
+
+    # Also check script directory for local symlinks
+    for symlink in "$script_dir"/*; do
+        [[ -L "$symlink" ]] || continue
+        name="${symlink##*/}"
+        [[ "$name" == "ok" ]] && continue  # Skip ok script
+        [[ "$(readlink "$symlink")" == "ok_master" ]] || continue
+        complete -F _ok_master_completion "$name"
+    done
+}
+
+# Register completions for existing symlinks
+_oknav_register_completions 2>/dev/null
+
+#fin

@@ -1,0 +1,32 @@
+#!/bin/bash
+# ==============================================================================
+# Mock SSH - Captures SSH calls without actual connection
+# ==============================================================================
+# Used by tests to verify SSH command construction without network access.
+#
+# Environment variables:
+#   MOCK_LOG      - File to log calls to (default: /tmp/mock-ssh.log)
+#   MOCK_EXIT     - Exit code to return (default: 0)
+#   MOCK_OUTPUT   - Output to print (default: empty)
+#   MOCK_STDERR   - Output for stderr (default: empty)
+# ==============================================================================
+
+MOCK_LOG="${MOCK_LOG:-/tmp/mock-ssh.log}"
+MOCK_EXIT="${MOCK_EXIT:-0}"
+
+# Log the call
+echo "SSH_CALL: $*" >> "$MOCK_LOG"
+
+# Print configured output
+if [[ -n "${MOCK_OUTPUT:-}" ]]; then
+  echo "$MOCK_OUTPUT"
+fi
+
+# Print configured stderr
+if [[ -n "${MOCK_STDERR:-}" ]]; then
+  >&2 echo "$MOCK_STDERR"
+fi
+
+exit "$MOCK_EXIT"
+
+#fin
