@@ -3,13 +3,13 @@
 # Source this file or copy to /etc/bash_completion.d/oknav
 #
 # Provides tab completion for:
-#   - ok (cluster orchestrator)
+#   - oknav (cluster orchestrator)
 #   - ok_master and all symlinks (individual server access)
 
 # Get the directory where OKnav is installed
 _oknav_get_script_dir() {
     local script_path
-    script_path=$(command -v ok 2>/dev/null) || return 1
+    script_path=$(command -v oknav 2>/dev/null) || return 1
     script_path=$(realpath "$script_path" 2>/dev/null) || return 1
     dirname "$script_path"
 }
@@ -60,8 +60,8 @@ _ok_master_completion() {
     esac
 }
 
-# Completion for ok script (cluster orchestrator)
-_ok_completion() {
+# Completion for oknav script (cluster orchestrator)
+_oknav_completion() {
     local cur prev opts subcommands aliases
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -103,7 +103,7 @@ _ok_completion() {
 
 # Register completions
 # Core scripts
-complete -F _ok_completion ok
+complete -F _oknav_completion oknav
 complete -F _ok_master_completion ok_master
 
 # Dynamic registration: find all symlinks pointing to ok_master
@@ -124,7 +124,7 @@ _oknav_register_completions() {
     for symlink in "$script_dir"/*; do
         [[ -L "$symlink" ]] || continue
         name="${symlink##*/}"
-        [[ "$name" == "ok" ]] && continue  # Skip ok script
+        [[ "$name" == "oknav" ]] && continue  # Skip oknav script
         [[ "$(readlink "$symlink")" == "ok_master" ]] || continue
         complete -F _ok_master_completion "$name"
     done

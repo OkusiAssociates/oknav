@@ -7,11 +7,11 @@
 oknav \- SSH orchestration system for multi-server command execution
 .\"
 .SH SYNOPSIS
-.B ok
+.B oknav
 .RI [ OPTIONS ]
 .I command
 .br
-.B ok install
+.B oknav install
 .RI [ OPTIONS ]
 .br
 .I ALIAS
@@ -24,7 +24,7 @@ is a lightweight SSH orchestration system providing two modes of operation:
 .TP
 .B Cluster Operations
 The
-.B ok
+.B oknav
 command executes commands across all servers marked with the
 .B (oknav)
 option in
@@ -44,12 +44,12 @@ Server mappings are defined in
 which associates FQDNs with aliases and options.
 .\"
 .SH COMMANDS
-.SS ok \- Cluster Orchestrator
+.SS oknav \- Cluster Orchestrator
 Execute commands across all servers with the
 .B (oknav)
 option in hosts.conf.
 .PP
-.B ok
+.B oknav
 .RI [ OPTIONS ]
 .I command
 .RS
@@ -61,7 +61,7 @@ Use
 for parallel execution.
 .RE
 .PP
-.B ok install
+.B oknav install
 .RI [ OPTIONS ]
 .RS
 Create symlinks in
@@ -83,7 +83,7 @@ in hosts.conf. If no command is provided, starts an interactive shell.
 .RE
 .\"
 .SH OPTIONS
-.SS ok Options
+.SS oknav Options
 .TP
 .BR \-p ", " \-\-parallel
 Execute commands in parallel across all servers. Output is collected
@@ -106,7 +106,7 @@ Display version information and exit.
 .BR \-h ", " \-\-help
 Display help message and exit.
 .\"
-.SS ok install Options
+.SS oknav install Options
 .TP
 .BR \-n ", " \-\-dry\-run
 Show what would be done without making changes.
@@ -118,7 +118,7 @@ that point to ok_master but are not defined in hosts.conf.
 .TP
 .B \-\-clean\-local
 Remove symlinks from the script directory (except
-.BR ok ).
+.BR oknav ).
 .TP
 .BR \-h ", " \-\-help
 Display install help and exit.
@@ -179,7 +179,7 @@ Comma-separated options in parentheses.
 Include this server in cluster operations. Only the
 .B first
 (primary) alias is used when running
-.BR ok .
+.BR oknav .
 .TP
 .B exclude
 Exclude from cluster operations even if
@@ -253,14 +253,14 @@ This is the primary configuration location after installation.
 .TP
 .I /usr/local/share/oknav/
 Package directory containing the installed scripts:
-.BR ok ", " ok_master ", " common.inc.sh .
+.BR oknav ", " ok_master ", " common.inc.sh .
 .TP
-.I /usr/local/bin/ok
-Cluster orchestrator (symlink to /usr/local/share/oknav/ok).
+.I /usr/local/bin/oknav
+Cluster orchestrator (symlink to /usr/local/share/oknav/oknav).
 .TP
 .I /usr/local/bin/*
 Server alias symlinks created by
-.BR "ok install" ,
+.BR "oknav install" ,
 pointing to
 .IR /usr/local/share/oknav/ok_master .
 .TP
@@ -297,33 +297,33 @@ Debug mode showing connection parameters.
 .\"
 .SS Cluster Operations
 .TP
-.B ok uptime
+.B oknav uptime
 Check uptime on all cluster servers (sequential).
 .TP
-.B ok \-p uptime
+.B oknav \-p uptime
 Check uptime on all servers in parallel.
 .TP
-.B ok \-t 60 'apt update'
+.B oknav \-t 60 'apt update'
 Update packages with 60-second timeout.
 .TP
-.B ok \-x srv1 hostname
+.B oknav \-x srv1 hostname
 Execute on all servers except srv1.
 .TP
-.B ok \-pt 10 uptime
+.B oknav \-pt 10 uptime
 Parallel execution with 10-second timeout.
 .TP
-.B ok \-D hostname
+.B oknav \-D hostname
 Debug mode showing discovered servers.
 .\"
 .SS Symlink Management
 .TP
-.B sudo ok install
+.B sudo oknav install
 Create symlinks in /usr/local/bin for all aliases.
 .TP
-.B ok install \-\-dry\-run
+.B oknav install \-\-dry\-run
 Preview symlink changes without making them.
 .TP
-.B sudo ok install \-\-remove\-stale
+.B sudo oknav install \-\-remove\-stale
 Remove orphaned symlinks not in hosts.conf.
 .\"
 .SS Output Format
@@ -331,7 +331,7 @@ Cluster operations prefix each server's output:
 .PP
 .nf
 .RS
-$ ok uptime
+$ oknav uptime
 +++srv1:
  10:15:23 up 45 days,  3:22,  2 users
 

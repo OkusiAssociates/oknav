@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # ==============================================================================
-# OKnav Test Suite - ok Orchestrator Integration Tests
+# OKnav Test Suite - oknav Orchestrator Integration Tests
 # ==============================================================================
-# Tests for multi-server SSH command orchestrator (ok)
+# Tests for multi-server SSH command orchestrator (oknav)
 #
 # Key behaviors tested:
 #   - Server discovery from symlinks validated against hosts.conf
@@ -11,13 +11,13 @@
 #   - Server exclusion handling (hosts.conf options and -x flag)
 #   - Cleanup on exit
 #
-# Run: bats tests/ok.bats
+# Run: bats tests/oknav.bats
 # ==============================================================================
 
 load test_helper
 
-# Helper to set up ok environment with hosts.conf
-setup_ok_env() {
+# Helper to set up oknav environment with hosts.conf
+setup_oknav_env() {
   local -a servers=("$@")
 
   # Default servers if none specified
@@ -35,8 +35,8 @@ setup_ok_env() {
   done
   create_hosts_conf "$TEST_TEMP_DIR" "${entries[@]}"
 
-  # Copy ok script
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  # Copy oknav script
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
 
   # Set up mocks
   create_mock_sudo
@@ -47,43 +47,43 @@ setup_ok_env() {
 # Help and Version Tests
 # ==============================================================================
 
-@test "ok without arguments shows usage and exits 1" {
-  setup_ok_env
+@test "oknav without arguments shows usage and exits 1" {
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok
+  run ./oknav
   ((status == 1))
   assert_output_contains "Usage:"
 }
 
-@test "ok -h shows usage and exits 0" {
-  setup_ok_env
+@test "oknav -h shows usage and exits 0" {
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -h
+  run ./oknav -h
   ((status == 0))
   assert_output_contains "Usage:"
   assert_output_contains "Options:"
 }
 
-@test "ok --help shows usage and exits 0" {
-  setup_ok_env
+@test "oknav --help shows usage and exits 0" {
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --help
+  run ./oknav --help
   ((status == 0))
   assert_output_contains "Usage:"
 }
 
-@test "ok -V shows version and exits 0" {
-  setup_ok_env
+@test "oknav -V shows version and exits 0" {
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -V
+  run ./oknav -V
   ((status == 0))
   [[ "$output" =~ [0-9]+\.[0-9]+\.[0-9]+ ]]
 }
 
-@test "ok --version shows version and exits 0" {
-  setup_ok_env
+@test "oknav --version shows version and exits 0" {
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --version
+  run ./oknav --version
   ((status == 0))
 }
 
@@ -91,19 +91,19 @@ setup_ok_env() {
 # Server Discovery Tests
 # ==============================================================================
 
-@test "ok discovers ok* symlinks that are in hosts.conf" {
-  setup_ok_env ok0 ok1 ok2
+@test "oknav discovers ok* symlinks that are in hosts.conf" {
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -D uptime 2>&1
+  run ./oknav -D uptime 2>&1
   assert_output_contains "Discovered servers:"
 }
 
-@test "ok finds all symlinks matching hosts.conf" {
-  setup_ok_env ok0 ok1 ok2 ok3
+@test "oknav finds all symlinks matching hosts.conf" {
+  setup_oknav_env ok0 ok1 ok2 ok3
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -D uptime 2>&1
+  run ./oknav -D uptime 2>&1
   # Should find all 4 servers
   assert_output_contains "ok0"
   assert_output_contains "ok1"
@@ -111,7 +111,7 @@ setup_ok_env() {
   assert_output_contains "ok3"
 }
 
-@test "ok excludes hosts without (oknav) option" {
+@test "oknav excludes hosts without (oknav) option" {
   create_server_symlinks "$TEST_TEMP_DIR" ok0 ok1 ok2
   create_hosts_conf "$TEST_TEMP_DIR" \
     "ok0.test.local ok0 (oknav)" \
@@ -119,10 +119,10 @@ setup_ok_env() {
     "ok2.test.local ok2"
   create_mock_sudo
   create_mock_timeout
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -D uptime 2>&1
+  run ./oknav -D uptime 2>&1
   # ok2 should NOT be included (no oknav option)
   assert_output_not_contains "ok2"
   # ok0 and ok1 should be included
@@ -130,27 +130,27 @@ setup_ok_env() {
   assert_output_contains "ok1"
 }
 
-@test "ok ignores non-symlink files" {
-  setup_ok_env ok0 ok1
+@test "oknav ignores non-symlink files" {
+  setup_oknav_env ok0 ok1
   # Create a regular file named ok-fake (not a symlink)
   echo "not a script" > "${TEST_TEMP_DIR}/ok-notlink"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -D uptime 2>&1
+  run ./oknav -D uptime 2>&1
   # Should NOT include ok-notlink
   assert_output_not_contains "ok-notlink"
 }
 
-@test "ok with no servers found exits with error" {
+@test "oknav with no servers found exits with error" {
   # Create directory with no matching symlinks/hosts.conf
   mkdir -p "${TEST_TEMP_DIR}/empty"
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/empty/"
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/empty/"
   cp "${PROJECT_DIR}/common.inc.sh" "${TEST_TEMP_DIR}/empty/"
   # Create empty hosts.conf - will fail on "no valid entries"
   echo "# empty" > "${TEST_TEMP_DIR}/empty/hosts.conf"
   cd "${TEST_TEMP_DIR}/empty" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   ((status != 0))
 }
 
@@ -159,59 +159,59 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "-p enables parallel mode" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -p -D uptime
+  run ./oknav -p -D uptime
   assert_output_contains "parallel"
 }
 
 @test "--parallel enables parallel mode" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --parallel -D uptime
+  run ./oknav --parallel -D uptime
   assert_output_contains "parallel"
 }
 
 @test "-t sets timeout value" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -t 60 -D uptime
+  run ./oknav -t 60 -D uptime
   assert_output_contains "Timeout: 60"
 }
 
 @test "--timeout sets timeout value" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --timeout 120 -D uptime
+  run ./oknav --timeout 120 -D uptime
   assert_output_contains "Timeout: 120"
 }
 
 @test "-t with non-numeric value exits with non-zero" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -t abc uptime
+  run ./oknav -t abc uptime
   # Script uses declare -i TIMEOUT, so non-numeric triggers bash error
   ((status != 0))
 }
 
 @test "-D enables debug output" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -D uptime
+  run ./oknav -D uptime
   assert_output_contains "DEBUG"
 }
 
 @test "--debug enables debug output" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --debug uptime
+  run ./oknav --debug uptime
   assert_output_contains "DEBUG"
 }
 
 @test "invalid option --invalid exits with code 22" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok --invalid
+  run ./oknav --invalid
   ((status == 22))
   assert_output_contains "Invalid option"
 }
@@ -221,17 +221,17 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "-pt 10 combines parallel and timeout" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -pt 10 -D uptime
+  run ./oknav -pt 10 -D uptime
   assert_output_contains "parallel"
   assert_output_contains "Timeout: 10"
 }
 
 @test "-Dp combines debug and parallel" {
-  setup_ok_env
+  setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -Dp uptime
+  run ./oknav -Dp uptime
   assert_output_contains "DEBUG"
   assert_output_contains "parallel"
 }
@@ -241,27 +241,27 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "-x excludes specified server" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -x ok0 -D uptime 2>&1
+  run ./oknav -x ok0 -D uptime 2>&1
   # ok0 should not be in execution output
   assert_output_not_contains "+++ok0:"
 }
 
 @test "--exclude-host excludes specified server" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok --exclude-host ok1 -D uptime 2>&1
+  run ./oknav --exclude-host ok1 -D uptime 2>&1
   assert_output_not_contains "+++ok1:"
 }
 
 @test "-x is repeatable for multiple exclusions" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -x ok0 -x ok1 uptime
+  run ./oknav -x ok0 -x ok1 uptime
   # Only ok2 should be executed
   assert_output_contains "+++ok2:"
   assert_output_not_contains "+++ok0:"
@@ -276,10 +276,10 @@ setup_ok_env() {
     "ok2.test.local ok2 (oknav)"
   create_mock_sudo
   create_mock_timeout
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # ok0 should be excluded via hosts.conf
   assert_output_not_contains "+++ok0:"
   assert_output_contains "+++ok1:"
@@ -292,10 +292,10 @@ setup_ok_env() {
     "dev.test.local okdev (oknav,local-only:some-other-host)"
   create_mock_sudo
   create_mock_timeout
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -D uptime 2>&1
+  run ./oknav -D uptime 2>&1
   # okdev should be auto-excluded
   assert_output_not_contains "+++okdev:"
 }
@@ -307,21 +307,21 @@ setup_ok_env() {
     "dev.test.local okdev (oknav,local-only:$(hostname))"
   create_mock_sudo
   create_mock_timeout
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # okdev should be included since we're on the correct host
   assert_output_contains "+++okdev:"
 }
 
 @test "ok-server-excludes.list is ignored" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   # Create old exclusion file (should be ignored)
   echo "ok0" > "${TEST_TEMP_DIR}/ok-server-excludes.list"
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # ok0 should NOT be excluded - file is ignored
   assert_output_contains "+++ok0:"
   assert_output_contains "+++ok1:"
@@ -332,19 +332,19 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "sequential mode executes servers in order" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # Check output format - should have server markers
   assert_output_contains "+++ok"
 }
 
 @test "sequential mode output has server separators" {
-  setup_ok_env ok0 ok1
+  setup_oknav_env ok0 ok1
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # Each server output starts with +++server:
   assert_output_contains "+++ok0:"
   assert_output_contains "+++ok1:"
@@ -355,20 +355,20 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "parallel mode uses background processes" {
-  setup_ok_env ok0 ok1
+  setup_oknav_env ok0 ok1
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -p uptime
+  run ./oknav -p uptime
   # Output should still have all servers
   assert_output_contains "+++ok0:"
   assert_output_contains "+++ok1:"
 }
 
 @test "parallel mode maintains output order" {
-  setup_ok_env ok0 ok1 ok2
+  setup_oknav_env ok0 ok1 ok2
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -p uptime
+  run ./oknav -p uptime
   # All servers should appear in output
   ((status == 0))
 }
@@ -378,24 +378,24 @@ setup_ok_env() {
 # ==============================================================================
 
 @test "timeout command is used for execution" {
-  setup_ok_env ok0
+  setup_oknav_env ok0
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   # Timeout mock should have been called
   assert_mock_called "TIMEOUT_CALL" "30s"
 }
 
 @test "custom timeout value is passed to timeout command" {
-  setup_ok_env ok0
+  setup_oknav_env ok0
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok -t 60 uptime
+  run ./oknav -t 60 uptime
   assert_mock_called "TIMEOUT_CALL" "60s"
 }
 
 @test "timeout exit 124 shows timeout message" {
-  setup_ok_env ok0
+  setup_oknav_env ok0
 
   # Create timeout mock that returns 124
   cat > "${MOCK_BIN}/timeout" <<'EOF'
@@ -407,7 +407,7 @@ EOF
 
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   assert_output_contains "Connection timeout"
 }
 
@@ -416,13 +416,13 @@ EOF
 # ==============================================================================
 
 @test "temp files are created in TEMP_DIR for parallel mode" {
-  setup_ok_env ok0 ok1
+  setup_oknav_env ok0 ok1
 
   # Set XDG_RUNTIME_DIR to our temp dir for predictable temp file location
   export XDG_RUNTIME_DIR="$TEST_TEMP_DIR"
 
   cd "$TEST_TEMP_DIR" || return 1
-  run ./ok -p uptime
+  run ./oknav -p uptime
 
   # After execution, temp files should be cleaned up
   # (The trap should have removed them)
@@ -434,18 +434,18 @@ EOF
 # ==============================================================================
 
 @test "command is passed to servers via sudo" {
-  setup_ok_env ok0
+  setup_oknav_env ok0
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok uptime
+  run ./oknav uptime
   assert_mock_called "SUDO_CALL" "ok0"
 }
 
 @test "complex command with quotes is passed correctly" {
-  setup_ok_env ok0
+  setup_oknav_env ok0
   cd "$TEST_TEMP_DIR" || return 1
 
-  run ./ok 'echo "hello world"'
+  run ./oknav 'echo "hello world"'
   assert_mock_called "SUDO_CALL" "echo"
 }
 

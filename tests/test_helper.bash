@@ -299,21 +299,21 @@ run_ok_master() {
   run "./${symlink_name}" "$@"
 }
 
-# run_ok() - Run ok orchestrator with mocked commands
-# Usage: run_ok [args...]
-run_ok() {
+# run_oknav() - Run oknav orchestrator with mocked commands
+# Usage: run_oknav [args...]
+run_oknav() {
   create_server_symlinks "$TEST_TEMP_DIR"
   create_mock_sudo
   create_mock_timeout
 
-  # Copy ok script
-  cp "${PROJECT_DIR}/ok" "${TEST_TEMP_DIR}/"
+  # Copy oknav script
+  cp "${PROJECT_DIR}/oknav" "${TEST_TEMP_DIR}/"
 
   # Export environment for subprocess
   export PATH MOCK_LOG
 
   cd "$TEST_TEMP_DIR" || return 1
-  run "./ok" "$@"
+  run "./oknav" "$@"
 }
 
 #fin

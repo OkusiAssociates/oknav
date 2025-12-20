@@ -3,7 +3,7 @@
 # OKnav System - Common Include File
 # ==============================================================================
 # Shared configuration and utility functions for OKnav scripts.
-# Must be sourced (not executed) by ok and ok_master.
+# Must be sourced (not executed) by oknav and ok_master.
 #
 # Exports:
 #   VERSION        - OKnav version string (readonly)

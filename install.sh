@@ -10,7 +10,7 @@
 #   sudo ./install.sh --uninstall
 #
 # Installs to:
-#   /usr/local/share/oknav/     - Package files (ok, ok_master, common.inc.sh)
+#   /usr/local/share/oknav/     - Package files (oknav, ok_master, common.inc.sh)
 #   /usr/local/bin/             - Symlinks to executables
 #   /etc/oknav/                 - Configuration (hosts.conf)
 #   /usr/local/share/man/man1/  - Manual page
@@ -86,7 +86,7 @@ get_downloader() {
 is_local_install() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  [[ -f "$script_dir/ok" && -f "$script_dir/ok_master" && -f "$script_dir/common.inc.sh" ]]
+  [[ -f "$script_dir/oknav" && -f "$script_dir/ok_master" && -f "$script_dir/common.inc.sh" ]]
 }
 
 # Get source file (download or local)
@@ -163,7 +163,7 @@ install_oknav() {
 
   # Install executable scripts (755)
   info "Installing package files to $INSTALL_DIR..."
-  for file in ok ok_master; do
+  for file in oknav ok_master; do
     get_source_file "$file" > "$TEMP_DIR/$file" || exit 1
     install -m 755 "$TEMP_DIR/$file" "$INSTALL_DIR/$file"
     success "Installed $file"
@@ -179,7 +179,7 @@ install_oknav() {
 
   # Create symlinks in /usr/local/bin
   info "Creating symlinks in $BIN_DIR..."
-  for cmd in ok ok_master; do
+  for cmd in oknav ok_master; do
     ln -sf "$INSTALL_DIR/$cmd" "$BIN_DIR/$cmd"
     success "Linked $cmd"
   done
@@ -220,15 +220,15 @@ install_oknav() {
     warn "oknav.bash_completion not found, skipping completion"
   fi
 
-  # Create alias symlinks using ok install
+  # Create alias symlinks using oknav install
   echo
   info "Creating server alias symlinks..."
   if [[ -f "$CONFIG_DIR/hosts.conf" ]]; then
-    "$BIN_DIR/ok" install 2>/dev/null || {
+    "$BIN_DIR/oknav" install 2>/dev/null || {
       warn "Could not create alias symlinks (edit $CONFIG_DIR/hosts.conf first)"
     }
   else
-    warn "No hosts.conf found - run 'sudo ok install' after configuring servers"
+    warn "No hosts.conf found - run 'sudo oknav install' after configuring servers"
   fi
 
   echo
@@ -236,12 +236,12 @@ install_oknav() {
   echo
   echo "Next steps:"
   echo "  1. Edit $CONFIG_DIR/hosts.conf to add your servers"
-  echo "  2. Run 'sudo ok install' to create alias symlinks"
-  echo "  3. Test with: ok -D hostname"
+  echo "  2. Run 'sudo oknav install' to create alias symlinks"
+  echo "  3. Test with: oknav -D hostname"
   echo
   echo "Documentation:"
   echo "  man oknav          # Read the manual"
-  echo "  ok --help          # Cluster operations help"
+  echo "  oknav --help       # Cluster operations help"
   echo "  srv1 --help        # Individual server help"
   echo
 }
@@ -271,7 +271,7 @@ uninstall_oknav() {
   done
 
   # Remove main symlinks
-  for cmd in ok ok_master; do
+  for cmd in oknav ok_master; do
     if [[ -L "$BIN_DIR/$cmd" ]]; then
       rm -f "$BIN_DIR/$cmd"
       success "Removed $cmd symlink"
