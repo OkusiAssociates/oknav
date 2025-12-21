@@ -383,28 +383,40 @@ remove_host() {
 # ------------------------------------------------------------------------------
 # list_hosts() - List all host symlinks pointing to ok_master
 # Shows which hosts are defined in hosts.conf vs ad-hoc additions.
-# Args: [-h|--help]
+# Args: [-R|--reachable] [-h|--help]
 # Returns: 0 always
 # ------------------------------------------------------------------------------
 list_hosts() {
   local -- target_dir=${OKNAV_TARGET_DIR:-/usr/local/bin}
+  local -i reachable_check=0
 
   # Locate ok_master: prefer installed location, fall back to dev directory
   local -- ok_master=/usr/local/share/oknav/ok_master
   [[ -f "$ok_master" ]] || ok_master="$SCRIPT_DIR"/ok_master
 
-  if [[ "${1:-}" == @(-h|--help) ]]; then
-    cat <<-'EOT'
-	Usage: oknav list
+  # Parse options
+  while (($#)); do
+    case $1 in
+      -R|--reachable)
+        reachable_check=1 ;;
+      -h|--help)
+        cat <<-'EOT'
+	Usage: oknav list [-R|--reachable]
 
 	List all host symlinks in /usr/local/bin pointing to ok_master.
 	Shows whether each host is defined in hosts.conf or added ad-hoc.
 
 	Options:
-	  -h, --help    Show this help
+	  -R, --reachable  Test each host for SSH connectivity (5s timeout)
+	  -h, --help       Show this help
 	EOT
-    return 0
-  fi
+        return 0 ;;
+      *)
+        warn "Unknown option: $1"
+        return 22 ;;
+    esac
+    shift
+  done
 
   # Load hosts.conf for status checking
   #shellcheck disable=SC2119
@@ -425,11 +437,25 @@ list_hosts() {
   done < <(find "$target_dir" -maxdepth 1 -type l 2>/dev/null | sort)
 
   # Display with status
+  local -- fqdn source status
   for name in "${aliases[@]}"; do
     if [[ -n "${ALIAS_TO_FQDN[$name]:-}" ]]; then
-      printf '%-12s (hosts.conf)\n' "$name"
+      fqdn="${ALIAS_TO_FQDN[$name]}"
+      source="hosts.conf"
     else
-      printf '%-12s (ad-hoc)\n' "$name"
+      fqdn="$name"
+      source="ad-hoc"
+    fi
+
+    if ((reachable_check)); then
+      if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
+        status="✓"
+      else
+        status="✗"
+      fi
+      printf '%-12s %-10s  %s\n' "$name" "$source" "$status"
+    else
+      printf '%-12s %s\n' "$name" "$source"
     fi
   done
 }
