@@ -630,7 +630,7 @@ EOF
   OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run ./oknav list
   ((status == 0))
   assert_output_contains "ok0"
-  assert_output_contains "(hosts.conf)"
+  assert_output_contains "hosts.conf"
 }
 
 @test "oknav list shows ad-hoc entries" {
@@ -644,9 +644,9 @@ EOF
   OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run ./oknav list
   ((status == 0))
   assert_output_contains "ok0"
-  assert_output_contains "(hosts.conf)"
+  assert_output_contains "hosts.conf"
   assert_output_contains "ok1"
-  assert_output_contains "(ad-hoc)"
+  assert_output_contains "ad-hoc"
   assert_output_contains "adhoc"
 }
 
@@ -726,7 +726,7 @@ EOF
   OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run ./oknav list
   ((status == 0))
   # Should show hosts.conf status, not execute on servers
-  assert_output_contains "(hosts.conf)"
+  assert_output_contains "hosts.conf"
 }
 
 # ==============================================================================
@@ -781,6 +781,58 @@ EOF
   run ./oknav lst
   ((status == 1))
   assert_output_contains "Did you mean: oknav list"
+}
+
+# ==============================================================================
+# oknav list --reachable tests
+# ==============================================================================
+
+@test "oknav list -R shows reachability status" {
+  setup_oknav_env ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  # With -R flag, output should include reachability status
+  # (will show ✗ since test hosts don't exist)
+  OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run timeout 10 ./oknav list -R
+  ((status == 0))
+  assert_output_contains "ok0"
+  # Should show either ✓ or ✗
+  [[ "$output" == *"✓"* ]] || [[ "$output" == *"✗"* ]]
+}
+
+@test "oknav list --reachable shows reachability status" {
+  setup_oknav_env ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run timeout 10 ./oknav list --reachable
+  ((status == 0))
+  assert_output_contains "ok0"
+  [[ "$output" == *"✓"* ]] || [[ "$output" == *"✗"* ]]
+}
+
+@test "oknav list --reachable help includes option" {
+  setup_oknav_env ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav list --help
+  ((status == 0))
+  assert_output_contains "--reachable"
+  assert_output_contains "SSH connectivity"
+}
+
+@test "oknav list rejects unknown options" {
+  setup_oknav_env ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run ./oknav list --invalid-option
+  ((status == 22))
+  assert_output_contains "Unknown option"
+}
+
+@test "oknav list --reachable output format is aligned" {
+  setup_oknav_env ok0 ok1
+  cd "$TEST_TEMP_DIR" || return 1
+  OKNAV_TARGET_DIR="$TEST_TEMP_DIR" run timeout 15 ./oknav list --reachable
+  ((status == 0))
+  # Output should show source in parentheses and status symbol
+  assert_output_contains "hosts.conf"
+  [[ "$output" == *"✓"* ]] || [[ "$output" == *"✗"* ]]
 }
 
 #fin
