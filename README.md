@@ -2,7 +2,7 @@
 
 A lightweight SSH orchestration system for managing commands across multiple servers. Provides both individual server access via symlink-based routing and coordinated cluster operations with parallel execution.
 
-**Version**: 2.2.2
+**Version**: 2.3.0
 
 ## Overview
 
@@ -185,8 +185,10 @@ The `oknav` orchestrator runs commands across all servers marked with `(oknav)` 
 ### Usage
 
 ```bash
-oknav [OPTIONS] <command>     # Execute on all servers
-oknav install [OPTIONS]       # Manage symlinks
+oknav [OPTIONS] <command>        # Execute on all servers
+oknav install [OPTIONS]          # Manage symlinks from hosts.conf
+oknav add <hostname> [alias...]  # Add ad-hoc host launcher
+oknav remove <alias>...          # Remove ad-hoc host launcher
 ```
 
 ### Options
@@ -254,6 +256,39 @@ oknav install --dry-run
 # Full cleanup and reinstall
 sudo oknav install --remove-stale --clean-local
 ```
+
+### Add/Remove Subcommands
+
+Quickly add launchers for ad-hoc hosts without editing `hosts.conf`:
+
+```bash
+oknav add <hostname> [alias...]   # Add launcher(s)
+oknav remove <alias>...           # Remove launcher(s)
+```
+
+| Option | Description |
+|--------|-------------|
+| `-n, --dry-run` | Preview changes without making them |
+| `-h, --help` | Show subcommand help |
+
+```bash
+# Add launcher using hostname as alias
+sudo oknav add ai.okusi.id
+
+# Add with custom short aliases
+sudo oknav add ai.okusi.id ai ok-ai
+
+# Preview changes first
+sudo oknav add -n ai.okusi.id
+
+# Remove launchers
+sudo oknav remove ai ok-ai
+```
+
+**Notes:**
+- Hostname must be resolvable (via DNS or `/etc/hosts`)
+- Creates symlinks in `/usr/local/bin` pointing to `ok_master`
+- Ad-hoc hosts are not included in cluster operations (use `hosts.conf` for that)
 
 ## Output Format
 
@@ -342,7 +377,7 @@ oknav -t 5 echo OK
 
 | Item | Value |
 |------|-------|
-| Version | 2.2.1 |
+| Version | 2.3.0 |
 | Shell | Bash 5.2+ |
 | Dependencies | ssh, sudo, timeout, mktemp |
 | Temp files | `$XDG_RUNTIME_DIR` or `/tmp` |
