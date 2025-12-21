@@ -1,5 +1,5 @@
 .\" OKnav System Manual Page
-.\" Generated: 2025-12-21
+.\" Generated: 2025-12-22
 .\"
 .TH OKNAV 1 "December 2025" "OKnav 2.3.0" "User Commands"
 .\"
@@ -11,8 +11,15 @@ oknav \- SSH orchestration system for multi-server command execution
 .RI [ OPTIONS ]
 .I command
 .br
+.B oknav
+.RI [ OPTIONS ]
+.B \-\-
+.I command
+.br
 .B oknav install
 .RI [ OPTIONS ]
+.br
+.B oknav list
 .br
 .B oknav add
 .RI [ \-n ]
@@ -96,6 +103,29 @@ Remove ad-hoc launcher symlinks created by
 .BR "oknav add" .
 Only removes symlinks pointing to ok_master. Requires sudo.
 .RE
+.PP
+.B oknav list
+.RS
+List all host symlinks in
+.I /usr/local/bin
+pointing to ok_master. Shows whether each host is defined in hosts.conf
+or was added ad-hoc via
+.BR "oknav add" .
+.RE
+.PP
+.B oknav
+.RI [ OPTIONS ]
+.B \-\-
+.I command
+.RS
+Force multi-execute mode, bypassing subcommand detection. Use this when
+.I command
+matches a subcommand name (install, add, remove, list). For example,
+.B "oknav \-\- list /tmp"
+executes
+.I "list /tmp"
+on all servers instead of running the list subcommand.
+.RE
 .\"
 .SS ok_master \- Individual Server Handler
 Invoked through symlinks, provides SSH access to individual servers.
@@ -166,6 +196,11 @@ Show what would be done without making changes.
 .TP
 .BR \-h ", " \-\-help
 Display remove help and exit.
+.\"
+.SS oknav list Options
+.TP
+.BR \-h ", " \-\-help
+Display list help and exit.
 .\"
 .SS ok_master Options (Individual Server)
 .TP
@@ -286,6 +321,13 @@ Command not found (server unreachable).
 Override path to hosts.conf. Primarily used for testing.
 Takes precedence over default search paths.
 .TP
+.B OKNAV_TARGET_DIR
+Override the target directory for
+.BR "oknav list" .
+Defaults to
+.IR /usr/local/bin .
+Primarily used for testing.
+.TP
 .B XDG_RUNTIME_DIR
 Used for temporary files in parallel mode. Falls back to
 .I /tmp
@@ -399,6 +441,22 @@ Preview what add would do.
 .TP
 .B sudo oknav remove ai ok\-ai
 Remove ad-hoc launchers.
+.\"
+.SS Listing Hosts
+.TP
+.B oknav list
+List all installed host symlinks with their source (hosts.conf or ad-hoc).
+.\"
+.SS Bypassing Subcommands
+Use
+.B \-\-
+to execute commands that match subcommand names:
+.TP
+.B oknav \-\- list /tmp
+Execute 'list /tmp' on all servers (not the list subcommand).
+.TP
+.B oknav \-p \-\- install
+Parallel execute 'install' command on all servers.
 .\"
 .SS Output Format
 Cluster operations prefix each server's output:
