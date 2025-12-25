@@ -23,7 +23,7 @@
 # See also: ok_master (individual server handler), common.inc.sh (shared lib)
 # ==============================================================================
 set -euo pipefail
-shopt -s inherit_errexit
+shopt -s inherit_errexit shift_verbose extglob nullglob
 
 SCRIPT_PATH=$(realpath -e -- "$0")
 SCRIPT_DIR=${SCRIPT_PATH%/*}
@@ -165,7 +165,7 @@ install_symlinks() {
   for alias_name in "${ALIAS_LIST[@]}"; do
     for reserved in "${reserved_names[@]}"; do
       if [[ "$alias_name" == "$reserved" ]]; then
-        warn "alias '$alias_name' conflicts with oknav subcommand"
+        warn "alias ${alias_name@Q} conflicts with oknav subcommand"
         warn "  use 'oknav -- $alias_name <cmd>' to execute on this server"
       fi
     done
@@ -357,9 +357,9 @@ remove_host() {
   done
 
   # Require at least one alias
-  (($#)) || { error "Usage: oknav remove [-n] <alias>..."; return 1; }
+  (($#)) || { error 'Usage: oknav remove [-n] <alias>...'; return 1; }
 
-  ((dry_run)) && info "(dry-run mode - no changes will be made)"
+  ((dry_run)) && info '(dry-run mode - no changes will be made)'
 
   # Remove symlinks (requires sudo for /usr/local/bin)
   local -- alias target
@@ -434,9 +434,9 @@ list_hosts() {
     [[ -L "$link" ]] || continue
     target=$(readlink "$link")
     # Check if symlink target ends with ok_master
-    [[ "${target##*/}" == "ok_master" ]] || continue
+    [[ "${target##*/}" == ok_master ]] || continue
     name="${link##*/}"
-    [[ "$name" == "ok_master" ]] && continue
+    [[ "$name" == ok_master ]] && continue
     aliases+=("$name")
   done < <(find "$target_dir" -maxdepth 1 -type l 2>/dev/null | sort)
 
@@ -446,10 +446,10 @@ list_hosts() {
   for name in "${aliases[@]}"; do
     if [[ -n "${ALIAS_TO_FQDN[$name]:-}" ]]; then
       fqdn="${ALIAS_TO_FQDN[$name]}"
-      source="hosts.conf"
+      source=hosts.conf
     else
       fqdn="$name"
-      source="ad-hoc"
+      source=ad-hoc
     fi
     host_info+=("$name:$source:$fqdn")
   done
@@ -470,9 +470,9 @@ list_hosts() {
         (
           fqdn="${info##*:}"
           if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
-            echo "✓"
+            echo '✓'
           else
-            echo "✗"
+            echo '✗'
           fi
         ) > "$temp_file" 2>/dev/null &
         pids+=($!)
@@ -490,7 +490,7 @@ list_hosts() {
         name="${info%%:*}"
         source="${info#*:}"
         source="${source%%:*}"
-        status=$(<"${temp_files[$i]}") || status="✗"
+        status=$(<"${temp_files[$i]}") || status='✗'
         printf '%-12s %-10s  %s\n' "$name" "$source" "$status"
         ((++i))
       done
@@ -506,9 +506,9 @@ list_hosts() {
         source="${source%%:*}"
         fqdn="${info##*:}"
         if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
-          status="✓"
+          status='✓'
         else
-          status="✗"
+          status='✗'
         fi
         printf '%-12s %-10s  %s\n' "$name" "$source" "$status"
       done
@@ -547,7 +547,7 @@ while (($#)); do
     -[xptDVh]*)
       # Handle combined short options (e.g., -pD becomes -p -D)
       #shellcheck disable=SC2046
-      set -- '' $(printf -- "-%c " $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+      set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
     --)
       # End of options, force multi-execute mode (bypass subcommand check)
       FORCE_EXEC=1
@@ -564,7 +564,7 @@ done
 
 # Handle subcommands (skip if -- was used to force multi-execute)
 if ((! FORCE_EXEC)); then
-  case "${1:-}" in
+  case ${1:-} in
     install)
       shift
       install_symlinks "$@"
@@ -628,20 +628,20 @@ done
 # Validate server discovery
 if ((${#SERVERS[@]} == 0)); then
   if [[ -n "${1:-}" ]]; then
-    error "No (oknav) servers found for command: ${1@Q}"
+    error "No (oknav) servers found for command ${1@Q}"
     # Suggest similar subcommand names for common typos
     case "$1" in
       instal|instll|inst|nstall)
-        info "Did you mean: oknav install" ;;
+        info 'Did you mean: oknav install' ;;
       lst|lis|lsit)
-        info "Did you mean: oknav list" ;;
+        info 'Did you mean: oknav list' ;;
       ad|adds|dad)
-        info "Did you mean: oknav add" ;;
+        info 'Did you mean: oknav add' ;;
       remov|rm|del|delete|rmove)
-        info "Did you mean: oknav remove" ;;
+        info 'Did you mean: oknav remove' ;;
     esac
   fi
-  die 1 "Ensure hosts.conf has entries with (oknav) option"
+  die 1 'Ensure hosts.conf has entries with (oknav) option'
 fi
 
 # Debug output for server discovery
