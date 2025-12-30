@@ -41,7 +41,7 @@ fi
 
 # Cleanup on exit
 cleanup() {
-  [[ -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR"
+  [[ -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR" ||:
 }
 trap cleanup EXIT
 
@@ -133,10 +133,10 @@ Installation Methods:
   sudo ./install.sh --uninstall
 
 Installed Locations:
-  $INSTALL_DIR/     Package files
-  $BIN_DIR/         Executable symlinks
-  $CONFIG_DIR/      Configuration
-  $MAN_DIR/         Manual page
+  $INSTALL_DIR/  Package files
+  $BIN_DIR/  Executable symlinks
+  $CONFIG_DIR/  Configuration
+  $MAN_DIR/  Manual page
   $COMPLETION_DIR/  Bash completion
 
 EOT
