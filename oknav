@@ -1,26 +1,34 @@
 #!/bin/bash
 # ==============================================================================
-# OKnav System - Multi-server SSH Command Orchestrator
+# OKnav - Multi-Server SSH Command Orchestrator
 # ==============================================================================
-# Executes commands across all cluster servers defined in hosts.conf.
+#
+# Execute commands across all cluster servers defined in hosts.conf.
 # Servers must have (oknav) option to be included in cluster operations.
 #
 # Subcommands:
-#   (default)    Execute command on all (oknav) servers
+#   <command>    Execute command on all (oknav) servers (default)
 #   install      Create/manage symlinks in /usr/local/bin from hosts.conf
 #   add          Create ad-hoc host launcher (requires sudo)
 #   remove       Remove ad-hoc host launcher (requires sudo)
-#   list         List installed host symlinks and their source
+#   list         List installed host symlinks with source and status
 #
-# Use -- to force multi-execute mode (bypass subcommand detection):
-#   oknav -- list uptime    Execute 'list uptime' on servers, not list subcommand
+# Use -- to force command mode (bypass subcommand detection):
+#   oknav -- list /tmp      Run 'list /tmp' on servers, not the list subcommand
 #
 # Exit codes:
-#   0   Success
-#   1   General error (no servers, missing config, etc.)
-#   22  Invalid option (EINVAL)
+#   0    Success
+#   1    General error (no servers found, missing config)
+#   22   Invalid option (EINVAL)
+#   124  SSH connection timeout
+#   125  Timeout command error
+#   126  Command not found
 #
-# See also: ok_master (individual server handler), common.inc.sh (shared lib)
+# Related:
+#   ok_master      - Individual server SSH handler
+#   common.inc.sh  - Shared configuration and functions
+#   hosts.conf     - Server definitions with (oknav) option
+#
 # ==============================================================================
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
@@ -76,39 +84,36 @@ usage() {
   cat <<EOT
 $SCRIPT_NAME $VERSION - Multi-server SSH command orchestrator
 
-Execute commands across all cluster servers. Servers are discovered from
-hosts.conf entries marked with (oknav) option.
+Execute commands across all servers marked with (oknav) in hosts.conf.
 
 Usage:
-  $SCRIPT_NAME [OPTIONS] <command>          Execute command on all servers
-  $SCRIPT_NAME [OPTIONS] -- <command>       Force multi-execute (bypass subcommands)
+  $SCRIPT_NAME [OPTIONS] <command>          Execute on all cluster servers
+  $SCRIPT_NAME [OPTIONS] -- <command>       Force command mode (bypass subcommands)
   $SCRIPT_NAME install [OPTIONS]            Manage symlinks from hosts.conf
-  $SCRIPT_NAME add <hostname> [alias...]    Add ad-hoc launcher (sudo required)
-  $SCRIPT_NAME remove <alias>...            Remove launcher (sudo required)
-  $SCRIPT_NAME list                         List installed host symlinks
+  $SCRIPT_NAME add <hostname> [alias...]    Create ad-hoc launcher
+  $SCRIPT_NAME remove <alias>...            Remove launcher
+  $SCRIPT_NAME list [OPTIONS]               List installed host symlinks
 
 Options:
-  -p, --parallel           Execute on all servers simultaneously
-  -t, --timeout SECS       Connection timeout (default: $TIMEOUT)
+  -p, --parallel           Execute simultaneously on all servers
+  -t, --timeout SECS       SSH connection timeout (default: $TIMEOUT)
   -x, --exclude-host HOST  Exclude host from this run (repeatable)
   -D, --debug              Show server discovery and execution details
   -V, --version            Show version
   -h, --help               Show this help
 
-Server Filtering (automatic):
-  (oknav)            Required for inclusion in cluster operations
-  (exclude)          Excluded from cluster (can still access directly)
-  (local-only:HOST)  Only accessible from specified host
+Server Discovery:
+  Servers are auto-discovered from hosts.conf. Only entries with (oknav)
+  option are included. Entries with (exclude) or (local-only:HOST) that
+  doesn't match current hostname are filtered out.
 
 Examples:
-  $SCRIPT_NAME uptime                       Sequential execution (default)
-  $SCRIPT_NAME -p 'df -h'                   Parallel execution
-  $SCRIPT_NAME -x ok0 -x ok1 uptime         Exclude multiple hosts
-  $SCRIPT_NAME -pt 10 uptime                Parallel + 10s timeout
-  $SCRIPT_NAME -- list /tmp                 Force 'list /tmp' as command (not subcommand)
-  $SCRIPT_NAME install --dry-run            Preview symlink changes
-  $SCRIPT_NAME add ai.okusi.id ai           Create 'ai' launcher for ai.okusi.id
-  $SCRIPT_NAME remove ai                    Remove 'ai' launcher
+  $SCRIPT_NAME uptime                       Run on all servers (sequential)
+  $SCRIPT_NAME -p df -h                     Run in parallel
+  $SCRIPT_NAME -pt 10 uptime                Parallel with 10s timeout
+  $SCRIPT_NAME -x ok0 uptime                Exclude ok0 from this run
+  $SCRIPT_NAME -- list /tmp                 Run 'list /tmp' (not subcommand)
+  $SCRIPT_NAME list -R                      List hosts with connectivity check
 
 EOT
 }
@@ -138,12 +143,18 @@ install_symlinks() {
 	Usage: $SCRIPT_NAME install [OPTIONS]
 
 	Create symlinks in /usr/local/bin for all hosts.conf aliases.
+	Symlinks point to ok_master for server resolution.
 
 	Options:
-	  -n, --dry-run      Preview changes without modifying filesystem
+	  -n, --dry-run      Preview changes (no modifications)
 	  --remove-stale     Remove symlinks not in hosts.conf
-	  --clean-local      Remove dev symlinks from script directory
+	  --clean-local      Remove symlinks from script directory
 	  -h, --help         Show this help
+
+	Examples:
+	  $SCRIPT_NAME install                  Create/update all symlinks
+	  $SCRIPT_NAME install --dry-run        Preview what would change
+	  $SCRIPT_NAME install --remove-stale   Clean up old symlinks
 	EOT
         return 0
         ;;
@@ -171,8 +182,8 @@ install_symlinks() {
     done
   done
 
-  info "Installing symlinks to ${target_dir@Q}..."
-  ((dry_run)) && info "(dry-run mode - no changes will be made)"
+  info "Installing symlinks to $target_dir"
+  ((dry_run)) && info "[dry-run] No changes will be made"
 
   # Create symlinks for all aliases in hosts.conf
   local -- alias target
@@ -182,12 +193,12 @@ install_symlinks() {
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
         ((++skipped))
       else
-        info "  update: $alias (was: $(readlink "$target"))"
+        info "  update: $alias (was → $(readlink "$target"))"
         ((dry_run)) || ln -sf "$ok_master" "$target"
         ((++updated))
       fi
     elif [[ -e "$target" ]]; then
-      warn "$alias: file exists and is not a symlink - skipping"
+      warn "  $alias: file exists (not a symlink) - skipping"
     else
       info "  create: $alias"
       ((dry_run)) || ln -sf "$ok_master" "$target"
@@ -203,7 +214,7 @@ install_symlinks() {
       [[ "$(readlink "$link")" == "$ok_master" ]] || continue
       name="${link##*/}"
       [[ -n "${ALIAS_TO_FQDN[$name]:-}" ]] && continue
-      info "  remove: $name (not in hosts.conf)"
+      info "  remove: $name (stale)"
       ((dry_run)) || rm -f "$link"
       ((++removed))
     done
@@ -215,14 +226,14 @@ install_symlinks() {
     for link in "$SCRIPT_DIR"/ok*; do
       [[ -L "$link" ]] || continue
       name="${link##*/}"
-      info "  remove local: $name"
+      info "  remove: $name (local)"
       ((dry_run)) || rm -f "$link"
       ((++removed))
     done
   fi
 
   echo
-  info "Summary: $created created, $updated updated, $skipped unchanged, $removed removed"
+  success "Done: $created created, $updated updated, $skipped unchanged, $removed removed"
   return 0
 }
 
@@ -248,22 +259,23 @@ add_host() {
         cat <<-'EOT'
 	Usage: oknav add [-n] <hostname> [alias...]
 
-	Create symlinks for quick SSH access to a host (requires sudo).
-	The hostname must be resolvable via DNS or /etc/hosts.
+	Create ad-hoc launcher symlinks for quick SSH access (requires sudo).
+	Hostname must be resolvable via DNS or /etc/hosts.
 
 	Arguments:
 	  hostname    FQDN or IP address (must be resolvable)
 	  alias...    Symlink names (defaults to hostname if omitted)
 
 	Options:
-	  -n, --dry-run   Preview changes without modifying filesystem
+	  -n, --dry-run   Preview changes (no modifications)
 	  -h, --help      Show this help
 
 	Examples:
-	  oknav add ai.okusi.id             Creates: ai.okusi.id → ok_master
-	  oknav add ai.okusi.id ai ok-ai    Creates: ai, ok-ai → ok_master
+	  oknav add server.example.com              Create launcher 'server.example.com'
+	  oknav add server.example.com srv server   Create launchers 'srv' and 'server'
 
-	Note: Symlinks are created in /usr/local/bin using sudo.
+	Note: Ad-hoc hosts are NOT included in cluster operations.
+	      Use hosts.conf with (oknav) option for cluster membership.
 	EOT
         return 0 ;;
       -*) error "Unknown option ${1@Q}"; return 22 ;;
@@ -286,7 +298,7 @@ add_host() {
   # Use hostname as alias if none provided
   local -a aliases=("${@:-$hostname}")
 
-  ((dry_run)) && info "(dry-run mode - no changes will be made)"
+  ((dry_run)) && info "[dry-run] No changes will be made"
 
   # Create symlinks (requires sudo for /usr/local/bin)
   local -- alias target reply
@@ -294,21 +306,21 @@ add_host() {
     target="$target_dir/$alias"
     if [[ -L "$target" ]]; then
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
-        info "skip: $alias (already points to ok_master)"
+        info "  skip: $alias (already exists)"
       else
         # Symlink exists but points elsewhere
         if [[ -t 0 && -t 1 ]]; then
           # Interactive: prompt user
           read -rp "oknav: $alias exists (→ $(readlink "$target")). Overwrite? [y/N] " reply
-          [[ "$reply" =~ ^[Yy] ]] || { info "skip: $alias"; continue; }
+          [[ "$reply" =~ ^[Yy] ]] || { info "  skip: $alias"; continue; }
         fi
-        info "update: $alias (was: $(readlink "$target"))"
+        info "  update: $alias (was: $(readlink "$target"))"
         ((dry_run)) || sudo ln -sf "$ok_master" "$target"
       fi
     elif [[ -e "$target" ]]; then
-      warn "$alias: file exists and is not a symlink - skipping"
+      warn "  $alias: file exists (not a symlink) - skipping"
     else
-      info "create: $alias → $hostname"
+      info "  create: $alias → $hostname"
       ((dry_run)) || sudo ln -sf "$ok_master" "$target"
     fi
   done
@@ -336,18 +348,19 @@ remove_host() {
         cat <<-'EOT'
 	Usage: oknav remove [-n] <alias>...
 
-	Remove symlinks created by 'oknav add' (requires sudo).
+	Remove launcher symlinks (requires sudo).
 	Only removes symlinks that point to ok_master.
 
+	Arguments:
+	  alias...    Symlink names to remove
+
 	Options:
-	  -n, --dry-run   Preview changes without modifying filesystem
+	  -n, --dry-run   Preview changes (no modifications)
 	  -h, --help      Show this help
 
 	Examples:
-	  oknav remove ai                   Remove single symlink
-	  oknav remove ai ok-ai             Remove multiple symlinks
-
-	Note: Symlinks are removed from /usr/local/bin using sudo.
+	  oknav remove srv                  Remove single launcher
+	  oknav remove srv server backup    Remove multiple launchers
 	EOT
         return 0 ;;
       -*) error "Unknown option ${1@Q}"; return 22 ;;
@@ -359,7 +372,7 @@ remove_host() {
   # Require at least one alias
   (($#)) || { error 'Usage: oknav remove [-n] <alias>...'; return 1; }
 
-  ((dry_run)) && info '(dry-run mode - no changes will be made)'
+  ((dry_run)) && info '[dry-run] No changes will be made'
 
   # Remove symlinks (requires sudo for /usr/local/bin)
   local -- alias target
@@ -367,15 +380,15 @@ remove_host() {
     target="$target_dir/$alias"
     if [[ -L "$target" ]]; then
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
-        info "remove: $alias"
+        info "  remove: $alias"
         ((dry_run)) || sudo rm -f "$target"
       else
-        warn "$alias: symlink points elsewhere - skipping"
+        warn "  $alias: symlink points elsewhere - skipping"
       fi
     elif [[ -e "$target" ]]; then
-      warn "$alias: not a symlink - skipping"
+      warn "  $alias: not a symlink - skipping"
     else
-      warn "$alias: does not exist"
+      warn "  $alias: not found"
     fi
   done
 }
@@ -404,15 +417,25 @@ list_hosts() {
         parallel_mode=1 ;;
       -h|--help)
         cat <<-'EOT'
-	Usage: oknav list [-R|--reachable] [-p|--parallel]
+	Usage: oknav list [-R] [-p]
 
-	List all host symlinks in /usr/local/bin pointing to ok_master.
-	Shows whether each host is defined in hosts.conf or added ad-hoc.
+	List all host launcher symlinks pointing to ok_master.
+	Shows source (hosts.conf or ad-hoc) for each host.
 
 	Options:
-	  -R, --reachable  Test each host for SSH connectivity (5s timeout)
+	  -R, --reachable  Test SSH connectivity (5s timeout per host)
 	  -p, --parallel   Test hosts in parallel (use with -R)
 	  -h, --help       Show this help
+
+	Output Columns:
+	  NAME    Symlink name (launcher command)
+	  SOURCE  hosts.conf or ad-hoc
+	  STATUS  ✓ reachable, ✗ unreachable (with -R only)
+
+	Examples:
+	  oknav list                List all launchers
+	  oknav list -R             List with connectivity status
+	  oknav list -Rp            Parallel connectivity check
 	EOT
         return 0 ;;
       *)
@@ -627,30 +650,46 @@ done
 
 # Validate server discovery
 if ((${#SERVERS[@]} == 0)); then
+  error 'No cluster servers found'
+  echo >&2
+  # Check if command looks like a typo of a subcommand
   if [[ -n "${1:-}" ]]; then
-    error "No (oknav) servers found for command ${1@Q}"
-    # Suggest similar subcommand names for common typos
     case "$1" in
       instal|instll|inst|nstall)
-        info 'Did you mean: oknav install' ;;
-      lst|lis|lsit)
-        info 'Did you mean: oknav list' ;;
-      ad|adds|dad)
-        info 'Did you mean: oknav add' ;;
-      remov|rm|del|delete|rmove)
-        info 'Did you mean: oknav remove' ;;
+        info "Did you mean: oknav install"
+        info "  (typo detected: ${1@Q})" ;;
+      lst|lis|lsit|lits)
+        info "Did you mean: oknav list"
+        info "  (typo detected: ${1@Q})" ;;
+      ad|adds|dad|aad)
+        info "Did you mean: oknav add <hostname>"
+        info "  (typo detected: ${1@Q})" ;;
+      remov|rm|del|delete|rmove|reomve)
+        info "Did you mean: oknav remove <alias>"
+        info "  (typo detected: ${1@Q})" ;;
+      *)
+        info "To run ${1@Q} on cluster servers, ensure hosts.conf has" \
+             "entries with (oknav) option"
+        ;;
     esac
+  else
+    info 'Ensure hosts.conf has entries with (oknav) option'
   fi
-  die 1 'Ensure hosts.conf has entries with (oknav) option'
+  echo >&2
+  info 'Check server discovery with: oknav -D hostname'
+  info 'List available hosts with:   oknav list'
+  exit 1
 fi
 
 # Debug output for server discovery
 if ((DEBUG)); then
-  debug "Discovered servers: ${SERVERS[*]}"
-  debug "Command to execute: $*"
-  debug "Execution mode: $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')"
-  debug "Timeout: $TIMEOUT seconds"
-  debug "Temp directory: $TEMP_DIR"
+  >&2 echo "DEBUG: Cluster execution:"
+  >&2 echo "  SERVERS = ${SERVERS[*]}"
+  >&2 echo "  COMMAND = $*"
+  >&2 echo "  MODE    = $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')"
+  >&2 echo "  TIMEOUT = ${TIMEOUT}s"
+  ((${#ok_server_excludes[@]})) && >&2 echo "  EXCLUDE = ${ok_server_excludes[*]}"
+  >&2 echo
 fi
 
 # ------------------------------------------------------------------------------

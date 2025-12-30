@@ -1,44 +1,49 @@
 # OKnav
 
-SSH orchestration for multi-server environments. Connect to individual servers via symlinks or execute commands across your entire cluster.
+Lightweight SSH orchestration for multi-server environments.
 
-**Version**: 2.3.0
+## Features
 
-## Overview
+- **Individual server access** via named symlinks (`srv1`, `dev`, `backup`)
+- **Cluster-wide commands** with sequential or parallel execution
+- **Configuration-driven** server management via `hosts.conf`
+- **Host connectivity testing** with reachability checks
+- **Ad-hoc launchers** without config file editing
+- **Local-only restrictions** for host-specific access control
 
-| Component | Purpose |
-|-----------|---------|
-| `ok_master` | Individual server SSH handler (invoked via symlinks) |
-| `oknav` | Cluster orchestrator for multi-server commands |
-| `common.inc.sh` | Shared configuration and hosts.conf parsing |
+## Quick Start
 
-### How It Works
+```bash
+# 1. Install
+curl -sSL https://raw.githubusercontent.com/OkusiAssociates/oknav/main/install.sh | sudo bash
 
-```
-hosts.conf                      # Server definitions: FQDN → aliases
-    │
-    ├── ok_master ◄── srv1      # Symlink name determines target
-    │       │         srv2      # srv1 → lookup hosts.conf → FQDN → SSH
-    │       │         srv3
-    │       ▼
-    │   resolve_alias()         # Returns FQDN, checks constraints
-    │
-    └── oknav                   # Discovers (oknav) servers, executes on all
+# 2. Configure servers
+sudo nano /etc/oknav/hosts.conf
+# server1.example.com   srv1   (oknav)
+# server2.example.com   srv2   (oknav)
+
+# 3. Create symlinks
+sudo oknav install
+
+# 4. Use
+srv1 uptime              # Individual server
+oknav uptime             # All cluster servers
+oknav -p df -h           # Parallel execution
 ```
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/OkusiAssociates/oknav/main/install.sh | sudo bash
 ```
 
-This installs OKnav to standard system locations:
+Installs to:
 
 | Location | Contents |
 |----------|----------|
-| `/usr/local/share/oknav/` | Package files (oknav, ok_master, common.inc.sh) |
+| `/usr/local/share/oknav/` | Package files |
 | `/usr/local/bin/` | Executable symlinks |
 | `/etc/oknav/hosts.conf` | Server configuration |
 | `/usr/local/share/man/man1/oknav.1` | Manual page |
@@ -56,112 +61,82 @@ sudo ./install.sh
 
 ```bash
 sudo /usr/local/share/oknav/install.sh --uninstall
-# or from source:
-sudo ./install.sh --uninstall
 ```
 
-## Quick Start
+## Configuration
 
-### 1. Configure Servers
-
-Edit `/etc/oknav/hosts.conf` to define your servers:
-
-```
-# Format: FQDN  primary-alias [alias2...]  [(options)]
-server1.example.com   srv1 server1   (oknav)
-server2.example.com   srv2 server2   (oknav)
-server3.example.com   srv3 server3   (oknav)
-```
-
-### 2. Install Symlinks
-
-```bash
-sudo oknav install
-```
-
-This creates symlinks in `/usr/local/bin` for each alias in `hosts.conf`.
-
-### 3. Use
-
-```bash
-# Individual server access
-srv1 uptime              # SSH to server1
-srv2 -r                  # Root shell on server2
-
-# Cluster operations
-oknav uptime             # Run on all (oknav) servers
-oknav -p df -h           # Parallel execution
-```
-
-## Configuration: hosts.conf
-
-Server mappings and cluster membership are defined in `hosts.conf`:
+Server definitions live in `/etc/oknav/hosts.conf`:
 
 ```
 # Format: FQDN  primary-alias [alias2...]  [(options)]
 
-# Production servers (included in cluster operations)
+# Production cluster
 server1.example.com   srv1 server1   (oknav)
 server2.example.com   srv2 server2   (oknav)
 server3.example.com   srv3 server3   (oknav)
 
-# Development server (only accessible from workstation)
+# Development (restricted to workstation)
 devbox.local          dev devbox     (oknav,local-only:workstation)
 
-# Backup server (excluded from normal operations)
+# Backup (excluded from normal cluster operations)
 backup.local          bak backup     (oknav,exclude)
 
-# Ad-hoc server (direct access only, not in cluster)
+# Direct access only (not in cluster)
 adhoc.example.com     adhoc
 ```
 
-### Options
+### Configuration Options
 
 | Option | Description |
 |--------|-------------|
-| `oknav` | Include in cluster operations (uses first/primary alias only) |
+| `oknav` | Include in cluster operations (primary alias only) |
 | `exclude` | Exclude from cluster operations (still accessible directly) |
-| `local-only:HOSTNAME` | Restrict access to specified host machine |
+| `local-only:HOST` | Restrict access to specified hostname |
 
 ### Key Concepts
 
-- **First alias is canonical**: For servers with multiple aliases, only the first alias is used in cluster operations
-- **Ad-hoc servers**: Entries without `(oknav)` can be accessed directly but won't appear in cluster operations
-- **Combined options**: Use commas to combine options: `(oknav,local-only:myhost)`
+- **Primary alias**: First alias listed is used for cluster operations
+- **Combined options**: Separate with commas: `(oknav,local-only:myhost)`
+- **Ad-hoc entries**: Servers without `(oknav)` are accessible but not in cluster
+- **Config priority**: `/etc/oknav/hosts.conf` > `$SCRIPT_DIR/hosts.conf`
 
-## Individual Server Access
+## Usage
 
-Each symlink provides SSH access with user switching and directory preservation.
+### Individual Server Access
+
+Connect to servers via symlinks that resolve through `hosts.conf`:
 
 ```bash
-srv1 [OPTIONS] [command]     # Execute command or start shell
+srv1 [OPTIONS] [command]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-r, --root` | Connect as root |
 | `-u, --user USER` | Connect as specified user |
-| `-d, --dir` | Preserve current directory |
+| `-d, --dir` | Preserve current working directory |
 | `-D, --debug` | Show connection parameters |
+| `-V, --version` | Show version |
+| `-h, --help` | Show help |
+
+**Examples**:
 
 ```bash
-srv1                     # Interactive shell
-srv1 uptime              # Execute command
-srv1 -r                  # Root shell
-srv1 -rd                 # Root shell in current directory
-srv1 -u deploy git pull  # Run as specific user
-srv1 "df -h | grep data" # Complex commands (use quotes)
+srv1                         # Interactive shell
+srv1 uptime                  # Execute command
+srv1 -r                      # Root shell
+srv1 -rd                     # Root shell, current directory
+srv1 -u deploy git pull      # Run as specific user
+srv1 "df -h | grep data"     # Complex commands (quote them)
 ```
 
-## Cluster Operations
+### Cluster Operations
 
-Execute commands across all servers marked with `(oknav)` in `hosts.conf`.
+Execute commands across all servers marked with `(oknav)`:
 
 ```bash
-oknav [OPTIONS] <command>        # Execute on all servers
-oknav install [OPTIONS]          # Manage symlinks from hosts.conf
-oknav add <hostname> [alias...]  # Add ad-hoc launcher (sudo)
-oknav remove <alias>...          # Remove launcher (sudo)
+oknav [OPTIONS] <command>
+oknav [OPTIONS] -- <command>    # Force command mode
 ```
 
 | Option | Description |
@@ -169,60 +144,109 @@ oknav remove <alias>...          # Remove launcher (sudo)
 | `-p, --parallel` | Execute simultaneously |
 | `-t, --timeout SECS` | Connection timeout (default: 30) |
 | `-x, --exclude-host HOST` | Exclude server (repeatable) |
-| `-D, --debug` | Show discovery details |
+| `-D, --debug` | Show server discovery details |
+| `--` | Force command mode (bypass subcommand detection) |
+| `-V, --version` | Show version |
+| `-h, --help` | Show help |
+
+**Examples**:
 
 ```bash
-oknav uptime             # Sequential (default)
-oknav -p df -h           # Parallel execution
-oknav -pt 10 uptime      # Parallel + 10s timeout
-oknav -x srv1 uptime     # Exclude srv1
-oknav -D hostname        # Debug: show discovered servers
+oknav uptime                 # Sequential execution
+oknav -p df -h               # Parallel execution
+oknav -pt 10 uptime          # Parallel + 10s timeout
+oknav -x srv1 -x srv2 uptime # Exclude multiple servers
+oknav -D hostname            # Debug: show discovered servers
+oknav -- list /tmp           # Run 'list /tmp' (not subcommand)
 ```
 
-### Install Subcommand
+### Subcommands
+
+| Subcommand | Purpose |
+|------------|---------|
+| `install` | Manage symlinks from hosts.conf |
+| `add` | Create ad-hoc launcher |
+| `remove` | Remove launcher |
+| `list` | List installed host symlinks |
+
+#### install
 
 Create symlinks in `/usr/local/bin` for all `hosts.conf` aliases:
 
 ```bash
-sudo oknav install              # Create/update symlinks
-oknav install --dry-run         # Preview changes
-sudo oknav install --remove-stale   # Remove stale symlinks
-```
-
-### Add/Remove Subcommands
-
-Create ad-hoc launchers without editing `hosts.conf` (requires sudo):
-
-```bash
-oknav add <hostname> [alias...]   # Add launcher(s)
-oknav remove <alias>...           # Remove launcher(s)
+sudo oknav install                  # Create/update symlinks
+oknav install --dry-run             # Preview changes
+sudo oknav install --remove-stale   # Remove symlinks not in hosts.conf
+sudo oknav install --clean-local    # Remove dev symlinks from script dir
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-n, --dry-run` | Preview changes |
-| `-h, --help` | Show subcommand help |
+| `--remove-stale` | Remove symlinks not in hosts.conf |
+| `--clean-local` | Remove symlinks from script directory |
+| `-h, --help` | Show help |
+
+#### add / remove
+
+Create ad-hoc launchers without editing `hosts.conf`:
 
 ```bash
 # Add launcher (hostname used as alias)
-oknav add ai.okusi.id
+sudo oknav add ai.okusi.id
 
 # Add with custom aliases
-oknav add ai.okusi.id ai ok-ai
+sudo oknav add ai.okusi.id ai ok-ai
 
 # Remove launchers
-oknav remove ai ok-ai
+sudo oknav remove ai ok-ai
 ```
 
-**Notes:**
+| Option | Description |
+|--------|-------------|
+| `-n, --dry-run` | Preview changes |
+| `-h, --help` | Show help |
+
+**Notes**:
 - Hostname must be resolvable (DNS or `/etc/hosts`)
-- Creates symlinks in `/usr/local/bin → ok_master`
-- Ad-hoc hosts are **not** in cluster operations (use `hosts.conf` for that)
-- Interactive prompt if symlink exists pointing elsewhere
+- Ad-hoc hosts are NOT included in cluster operations
+- Use `hosts.conf` for cluster membership
+
+#### list
+
+Show all host symlinks in `/usr/local/bin` pointing to `ok_master`:
+
+```bash
+oknav list                   # List all hosts
+oknav list -R                # Test SSH connectivity
+oknav list -R -p             # Parallel connectivity testing
+```
+
+| Option | Description |
+|--------|-------------|
+| `-R, --reachable` | Test SSH connectivity (5s timeout) |
+| `-p, --parallel` | Test hosts in parallel (use with -R) |
+| `-h, --help` | Show help |
+
+**Output format**:
+
+```
+srv1         hosts.conf
+srv2         hosts.conf
+ai           ad-hoc
+```
+
+**With `-R` (reachability testing)**:
+
+```
+srv1         hosts.conf  ✓
+srv2         hosts.conf  ✓
+ai           ad-hoc      ✗
+```
 
 ## Output Format
 
-### Individual Server Access
+### Individual Server
 
 Direct output without prefixes:
 
@@ -233,7 +257,7 @@ $ srv1 uptime
 
 ### Cluster Operations
 
-Prefixed output showing which server produced which output:
+Prefixed output showing server origin:
 
 ```
 $ oknav uptime
@@ -242,14 +266,118 @@ $ oknav uptime
 
 +++srv2:
  09:15:24 up 32 days, 14:55,  0 users,  load average: 0.08, 0.03, 0.01
-
-+++srv3:
- 09:15:24 up 91 days,  7:42,  1 user,  load average: 0.24, 0.18, 0.15
 ```
 
-## Security Considerations
+In parallel mode (`-p`), output is collected and displayed in server order after all complete.
 
-**Important**:
+## Development
+
+### Linting
+
+```bash
+shellcheck -x oknav ok_master common.inc.sh install.sh
+```
+
+### Testing
+
+```bash
+# Run all tests
+bats tests/
+
+# Run specific test file
+bats tests/oknav.bats
+
+# Filter by test name
+bats tests/oknav.bats --filter "parallel"
+```
+
+### Syntax Validation
+
+```bash
+bash -n oknav && bash -n ok_master && bash -n common.inc.sh
+```
+
+## Reference
+
+### Options Summary
+
+| Tool | Option | Description |
+|------|--------|-------------|
+| `ok_master` | `-r` | Root user |
+| `ok_master` | `-u USER` | Specific user |
+| `ok_master` | `-d` | Preserve directory |
+| `ok_master` | `-D` | Debug mode |
+| `oknav` | `-p` | Parallel execution |
+| `oknav` | `-t SECS` | Timeout (default: 30) |
+| `oknav` | `-x HOST` | Exclude host (repeatable) |
+| `oknav` | `-D` | Debug mode |
+| `oknav` | `--` | Force command mode |
+| `install` | `-n` | Dry run |
+| `install` | `--remove-stale` | Remove stale symlinks |
+| `install` | `--clean-local` | Remove local symlinks |
+| `add` | `-n` | Dry run |
+| `remove` | `-n` | Dry run |
+| `list` | `-R` | Test reachability |
+| `list` | `-p` | Parallel testing |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Local-only constraint violated |
+| 22 | Invalid option (EINVAL) |
+| 42 | Direct ok_master execution (must use symlink) |
+| 124 | Timeout reached |
+| 125 | Timeout command error |
+| 126 | Command not found |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `OKNAV_HOSTS_CONF` | Override hosts.conf location |
+| `OKNAV_TARGET_DIR` | Override target directory (for testing) |
+| `XDG_RUNTIME_DIR` | Temp file location (falls back to `/tmp`) |
+
+### File Structure
+
+**Installed**:
+
+```
+/usr/local/share/oknav/
+├── oknav              # Cluster orchestrator
+├── ok_master          # Individual server handler
+├── common.inc.sh      # Shared functions
+└── install.sh         # Installer
+
+/etc/oknav/
+└── hosts.conf         # Server configuration
+
+/usr/local/bin/
+├── oknav              # → /usr/local/share/oknav/oknav
+├── ok_master          # → /usr/local/share/oknav/ok_master
+└── srv1, srv2...      # → /usr/local/share/oknav/ok_master
+```
+
+**Source**:
+
+```
+oknav/
+├── oknav              # Cluster orchestrator
+├── ok_master          # Individual server handler
+├── common.inc.sh      # Shared functions
+├── install.sh         # Installer
+├── hosts.conf.example # Configuration template
+├── oknav.1            # Man page
+├── oknav.bash_completion
+└── tests/             # BATS test suite
+```
+
+## Security
+
+### Important
 
 - Commands execute via sudo with SSH key authentication
 - Parallel operations affect multiple servers simultaneously
@@ -257,11 +385,12 @@ $ oknav uptime
 
 ### Best Practices
 
-1. **Test first**: Run commands on individual servers before cluster-wide execution
-2. **Quote carefully**: Use quotes for commands with pipes, redirects, or special characters
+1. **Test first**: Run commands on individual servers before cluster-wide
+2. **Quote carefully**: Use quotes for commands with pipes or special characters
 3. **Review changes**: Use `-D` debug mode to verify server discovery
 4. **Limit blast radius**: Use `-x` to exclude servers when testing
 5. **Secure keys**: Protect SSH keys and rotate regularly
+6. **Restrict access**: Use `local-only:HOST` for sensitive servers
 
 ## Troubleshooting
 
@@ -273,20 +402,20 @@ $ oknav uptime
 
 **SSH connection failures**
 - Verify SSH key authentication: `ssh user@server echo OK`
-- Check hostname resolution
+- Check hostname resolution: `getent hosts server1.example.com`
 - Use `-D` for debug output
 
 **Timeout errors**
 - Default timeout is 30 seconds
 - Use `-t SECS` for slow networks
-- Check network connectivity to target server
+- Check network connectivity
 
 **"No servers found"**
 - Verify `hosts.conf` has entries with `(oknav)` option
 - Check `(local-only:HOST)` restrictions match current hostname
 - Use `oknav -D` to see server discovery
 
-**local-only restrictions**
+**Local-only restrictions**
 - Servers with `(local-only:HOST)` only work from that specific host
 - Check current hostname: `hostname`
 
@@ -299,50 +428,13 @@ oknav -D hostname
 # Verify individual server resolution
 srv1 -D whoami
 
-# Quick connectivity test with short timeout
+# Test connectivity with short timeout
 oknav -t 5 echo OK
-```
 
-## Technical Details
-
-| Item | Value |
-|------|-------|
-| Version | 2.3.0 |
-| Shell | Bash 5.2+ |
-| Dependencies | ssh, sudo, timeout, mktemp |
-| Temp files | `$XDG_RUNTIME_DIR` or `/tmp` |
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Local-only constraint violated (ok_master) |
-| 22 | Invalid option (EINVAL) |
-| 124 | Timeout reached |
-| 125 | Timeout command error |
-| 126 | Command not found |
-
-### Installed File Structure
-
-```
-/usr/local/share/oknav/
-├── oknav           # Cluster orchestrator
-├── ok_master       # Individual server handler
-├── common.inc.sh   # Shared configuration and functions
-└── VERSION         # Version file
-
-/etc/oknav/
-└── hosts.conf      # Server configuration
-
-/usr/local/bin/
-├── oknav           # Symlink to oknav
-├── ok_master       # Symlink to ok_master
-└── srv1, srv2...   # Server alias symlinks
+# List hosts with reachability check
+oknav list -R
 ```
 
 ## License
 
 GPL-3. See LICENSE file for details.
-
