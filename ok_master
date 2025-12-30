@@ -1,18 +1,27 @@
 #!/bin/bash
 # ==============================================================================
-# OKnav System - Individual Server SSH Connection Handler
+# OKnav - Individual Server SSH Handler
 # ==============================================================================
-# Invoked via symlinks (ok0, srv1, etc.) to connect to specific servers.
-# The symlink name determines the target: ok0 → lookup in hosts.conf → FQDN.
-# If not in hosts.conf, the symlink name is used directly as hostname.
+#
+# SSH connection handler invoked via symlinks. The symlink name (srv1, ok0,
+# etc.) is resolved through hosts.conf to determine the target FQDN.
+#
+# Resolution order:
+#   1. Look up symlink name in hosts.conf → FQDN
+#   2. If not found, use symlink name directly as hostname (ad-hoc)
 #
 # Exit codes:
-#   0   Success (or help/version displayed)
+#   0   Success
 #   1   General error
-#   2   Local-only constraint violation
+#   2   Local-only constraint violated (server restricted to specific host)
 #   22  Invalid option (EINVAL)
+#   42  Direct execution (must invoke via symlink, not as 'ok_master')
 #
-# See also: oknav (cluster orchestrator), common.inc.sh (shared lib)
+# Related:
+#   oknav          - Cluster orchestrator (multi-server commands)
+#   common.inc.sh  - Shared configuration and functions
+#   hosts.conf     - Server definitions (FQDN → alias mappings)
+#
 # ==============================================================================
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
@@ -36,33 +45,30 @@ declare -- SSHOPTS=''              # SSH options (-t for interactive)
 
 usage() {
   cat <<EOT
-$SERVER $VERSION - SSH connection handler
-
-Connect to server via symlink name. The name is resolved via hosts.conf
-to get the FQDN. If not in hosts.conf, the name is used as hostname.
+$SERVER $VERSION - Individual server SSH handler
 
 Usage:
-  $SERVER [OPTIONS] [COMMAND...]    Execute command on remote server
-  $SERVER [OPTIONS]                 Start interactive shell session
+  $SERVER [OPTIONS] [COMMAND...]    Execute command on server
+  $SERVER [OPTIONS]                 Start interactive shell
 
 Options:
-  -r, --root        Connect as root (shortcut for -u root)
-  -u, --user USER   Connect as specified user (default: current user)
-  -d, --dir         Preserve current working directory on remote
-  -D, --debug       Show connection parameters
+  -r, --root        Connect as root
+  -u, --user USER   Connect as specified user
+  -d, --dir         Preserve current working directory
+  -D, --debug       Show connection parameters before connecting
   -V, --version     Show version
   -h, --help        Show this help
 
 Examples:
-  $SERVER uptime                    Execute 'uptime' command
-  $SERVER -r systemctl status       Check services as root
+  $SERVER uptime                    Run 'uptime' on server
+  $SERVER -r                        Root shell
   $SERVER -rd                       Root shell in current directory
-  $SERVER -u deploy -d git pull     Pull code as deploy user
-  $SERVER -D whoami                 Debug: show connection details
+  $SERVER -u deploy git pull        Run as specific user
+  $SERVER "df -h | grep data"       Commands with pipes (quote them)
 
-Resolution Order:
-  1. hosts.conf lookup: $SERVER → FQDN (with constraint checking)
-  2. If not found: use $SERVER directly as hostname
+Server Resolution:
+  Symlink name '$SERVER' is looked up in hosts.conf to get FQDN.
+  If not found, '$SERVER' is used directly as hostname.
 
 EOT
 }
@@ -90,6 +96,19 @@ while (($#)); do
   shift
 done
 
+# Sanity check: must be invoked via symlink, not directly as 'ok_master'
+if [[ $(basename -- "$SERVER") == "$SCRIPT_NAME" ]]; then
+  die 42 \
+    "Cannot run ${SCRIPT_NAME@Q} directly." '' \
+    'Create a symlink with the server name you want to connect to:' \
+    "  ln -s $(command -v ok_master || echo /usr/local/bin/ok_master) /usr/local/bin/myserver" '' \
+    'Then connect with:' \
+    '  myserver uptime' '' \
+    'Or use oknav to manage symlinks:' \
+    '  oknav add myserver.example.com myserver' \
+    '  oknav list'
+fi
+
 # ------------------------------------------------------------------------------
 # Server Resolution: symlink name → FQDN via hosts.conf
 # Returns: 0 found, 1 not found (use as hostname), 2 constraint violation
@@ -114,11 +133,16 @@ fi
 # Prepend cd if -d option used (path escaped for special chars)
 [[ -z "$CURDIR" ]] || CMD="cd $(printf %q "$CURDIR") && $CMD"
 
-# Debug: show all connection parameters
+# Debug: show connection parameters
 if ((DEBUG)); then
-  debug "Connection parameters:"
-  #shellcheck disable=SC2090,SC2089
-  >&2 declare -p ALIAS USER SERVER CURDIR CMD SSHOPTS
+  >&2 echo "DEBUG: Connection parameters:"
+  >&2 echo "  ALIAS   = $ALIAS"
+  >&2 echo "  SERVER  = $SERVER"
+  >&2 echo "  USER    = $USER"
+  [[ -n "$CURDIR" ]] && >&2 echo "  CURDIR  = $CURDIR"
+  >&2 echo "  COMMAND = ${CMD:-<interactive shell>}"
+  >&2 echo "  SSH     = ssh $SSHOPTS ${USER}@${SERVER}"
+  >&2 echo
 fi
 
 # ------------------------------------------------------------------------------

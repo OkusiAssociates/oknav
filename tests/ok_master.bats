@@ -85,38 +85,38 @@ run_ok_master_debug() {
 
 @test "ok0 resolves to FQDN from hosts.conf (debug output)" {
   run_ok_master_debug ok0 uptime
-  # Debug output shows SERVER=<fqdn>
-  assert_output_contains 'SERVER="server0.test.local"'
+  # Debug output shows SERVER = <fqdn>
+  assert_output_contains 'SERVER  = server0.test.local'
 }
 
 @test "ok1 resolves to FQDN from hosts.conf (debug output)" {
   run_ok_master_debug ok1 uptime
-  assert_output_contains 'SERVER="server1.test.local"'
+  assert_output_contains 'SERVER  = server1.test.local'
 }
 
 @test "ok2 resolves to FQDN from hosts.conf (debug output)" {
   run_ok_master_debug ok2 uptime
-  assert_output_contains 'SERVER="server2.test.local"'
+  assert_output_contains 'SERVER  = server2.test.local'
 }
 
 @test "ok3 resolves to FQDN from hosts.conf (debug output)" {
   run_ok_master_debug ok3 uptime
-  assert_output_contains 'SERVER="server3.test.local"'
+  assert_output_contains 'SERVER  = server3.test.local'
 }
 
 @test "ok0-bali resolves to FQDN with suffix (debug output)" {
   run_ok_master_debug ok0-bali uptime
-  assert_output_contains 'SERVER="server0-bali.test.local"'
+  assert_output_contains 'SERVER  = server0-bali.test.local'
 }
 
 @test "ok0-batam resolves to FQDN with suffix (debug output)" {
   run_ok_master_debug ok0-batam uptime
-  assert_output_contains 'SERVER="server0-batam.test.local"'
+  assert_output_contains 'SERVER  = server0-batam.test.local'
 }
 
 @test "ALIAS is preserved in debug output" {
   run_ok_master_debug ok0 uptime
-  assert_output_contains 'ALIAS="ok0"'
+  assert_output_contains 'ALIAS   = ok0'
 }
 
 # ==============================================================================
@@ -130,7 +130,7 @@ run_ok_master_debug() {
   # With -D, we can see that SERVER is set to the alias itself
   run timeout 1s ./ok99 -D uptime 2>&1 || true
   # SERVER should be "ok99" (the alias, since not in hosts.conf)
-  assert_output_contains 'SERVER="ok99"'
+  assert_output_contains 'SERVER  = ok99'
 }
 
 # ==============================================================================
@@ -150,7 +150,7 @@ run_ok_master_debug() {
 @test "local-only alias on correct host resolves (debug output)" {
   run_ok_master_debug okdev uptime
   # hosts.conf in run_ok_master_debug sets local-only to current hostname
-  assert_output_contains 'SERVER="devbox.test.local"'
+  assert_output_contains 'SERVER  = devbox.test.local'
 }
 
 # ==============================================================================
@@ -159,22 +159,22 @@ run_ok_master_debug() {
 
 @test "-r sets USER to root (debug output)" {
   run_ok_master_debug ok0 -r uptime
-  assert_output_contains 'USER="root"'
+  assert_output_contains 'USER    = root'
 }
 
 @test "--root sets USER to root (debug output)" {
   run_ok_master_debug ok0 --root uptime
-  assert_output_contains 'USER="root"'
+  assert_output_contains 'USER    = root'
 }
 
 @test "-u admin sets USER to admin (debug output)" {
   run_ok_master_debug ok0 -u admin uptime
-  assert_output_contains 'USER="admin"'
+  assert_output_contains 'USER    = admin'
 }
 
 @test "--user deploy sets USER to deploy (debug output)" {
   run_ok_master_debug ok0 --user deploy uptime
-  assert_output_contains 'USER="deploy"'
+  assert_output_contains 'USER    = deploy'
 }
 
 @test "-D enables debug output" {
@@ -209,15 +209,15 @@ run_ok_master_debug() {
 
 @test "-rd combines root and directory options (debug output)" {
   run_ok_master_debug ok0 -rd uptime
-  assert_output_contains 'USER="root"'
+  assert_output_contains 'USER    = root'
   # -d option should set CURDIR
-  assert_output_contains "CURDIR="
+  assert_output_contains "CURDIR  ="
 }
 
 @test "-Dr combines debug and root (debug output)" {
   run_ok_master_debug ok0 -Dr uptime
   assert_output_contains "DEBUG"
-  assert_output_contains 'USER="root"'
+  assert_output_contains 'USER    = root'
 }
 
 # ==============================================================================
@@ -227,14 +227,14 @@ run_ok_master_debug() {
 @test "-d sets CURDIR to current directory (debug output)" {
   run_ok_master_debug ok0 -d uptime
   # CURDIR should contain the current directory path
-  assert_output_contains "CURDIR="
-  # CMD should include cd command
+  assert_output_contains "CURDIR  ="
+  # COMMAND should include cd command
   assert_output_contains "cd"
 }
 
 @test "--dir sets CURDIR (debug output)" {
   run_ok_master_debug ok0 --dir uptime
-  assert_output_contains "CURDIR="
+  assert_output_contains "CURDIR  ="
 }
 
 # ==============================================================================
@@ -244,15 +244,15 @@ run_ok_master_debug() {
 @test "no command argument triggers interactive mode with -t option (debug output)" {
   run_ok_master_debug ok0
   # Interactive mode should add -t option for pseudo-terminal
-  assert_output_contains 'SSHOPTS="-t"'
-  # And CMD should be 'exec bash'
-  assert_output_contains 'CMD="exec bash"'
+  assert_output_contains 'SSH     = ssh -t'
+  # And COMMAND should be 'exec bash' or show interactive shell
+  assert_output_contains 'COMMAND = exec bash'
 }
 
 @test "with command argument, SSHOPTS is empty (debug output)" {
   run_ok_master_debug ok0 uptime
-  # Command mode should NOT have -t in SSHOPTS
-  assert_output_contains 'SSHOPTS=""'
+  # Command mode should NOT have -t in SSH line
+  assert_output_contains 'SSH     = ssh  '
 }
 
 # ==============================================================================
@@ -261,7 +261,7 @@ run_ok_master_debug() {
 
 @test "single command appears in CMD (debug output)" {
   run_ok_master_debug ok0 uptime
-  assert_output_contains 'CMD="uptime"'
+  assert_output_contains 'COMMAND = uptime'
 }
 
 @test "command with arguments appears in CMD (debug output)" {
