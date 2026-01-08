@@ -1,7 +1,7 @@
 .\" OKnav System Manual Page
-.\" Generated: 2025-12-30
+.\" Generated: 2026-01-08
 .\"
-.TH OKNAV 1 "December 2025" "OKnav 2.3.0" "User Commands"
+.TH OKNAV 1 "January 2026" "OKnav 2.3.0" "User Commands"
 .\"
 .SH NAME
 oknav \- SSH orchestration system for multi-server command execution
@@ -147,6 +147,10 @@ in hosts.conf. If no command is provided, starts an interactive shell.
 .BR \-p ", " \-\-parallel
 Execute commands in parallel across all servers. Output is collected
 and displayed in server order after all complete.
+.TP
+.BR \-d ", " \-\-dir
+Preserve current working directory on remote servers. The directory
+must exist on each remote system.
 .TP
 .BR \-t ", " \-\-timeout " " \fISECS\fR
 Set connection timeout in seconds. Default is 30.
@@ -427,6 +431,12 @@ Execute on all servers except srv1.
 .TP
 .B oknav \-pt 10 uptime
 Parallel execution with 10-second timeout.
+.TP
+.B oknav \-d ls
+Execute 'ls' in current directory on all servers.
+.TP
+.B oknav \-pd pwd
+Parallel execution preserving current directory.
 .TP
 .B oknav \-D hostname
 Debug mode showing discovered servers.
