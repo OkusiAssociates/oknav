@@ -21,7 +21,9 @@ set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
 
 # Configuration
+### VERSION managed by version
 declare -r VERSION=2.3.0
+###
 declare -r REPO_URL=https://raw.githubusercontent.com/OkusiAssociates/oknav/main
 declare -r INSTALL_DIR=/usr/local/share/oknav
 declare -r BIN_DIR=/usr/local/bin
