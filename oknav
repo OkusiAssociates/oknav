@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#shellcheck disable=SC2015
 # ==============================================================================
 # OKnav - Multi-Server SSH Command Orchestrator
 # ==============================================================================
@@ -33,10 +34,10 @@
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
 
-SCRIPT_PATH=$(realpath -e -- "$0")
-SCRIPT_DIR=${SCRIPT_PATH%/*}
-SCRIPT_NAME=${SCRIPT_PATH##*/}
-readonly -- SCRIPT_PATH SCRIPT_DIR SCRIPT_NAME
+#shellcheck disable=SC2155
+declare -r SCRIPT_PATH=$(realpath -e -- "$0")
+declare -r SCRIPT_DIR=${SCRIPT_PATH%/*}
+declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 
 #shellcheck source=common.inc.sh
 source "$SCRIPT_DIR"/common.inc.sh || exit 1
@@ -81,7 +82,7 @@ trap 'cleanup $?' SIGINT SIGTERM EXIT
 # usage() - Display help message
 # ------------------------------------------------------------------------------
 usage() {
-  cat <<EOT
+  cat <<HELP
 $SCRIPT_NAME $VERSION - Multi-server SSH command orchestrator
 
 Execute commands across all servers marked with (oknav) in hosts.conf.
@@ -115,7 +116,7 @@ Examples:
   $SCRIPT_NAME -- list /tmp                 Run 'list /tmp' (not subcommand)
   $SCRIPT_NAME list -R                      List hosts with connectivity check
 
-EOT
+HELP
 }
 
 # ------------------------------------------------------------------------------
@@ -135,27 +136,26 @@ install_symlinks() {
 
   while (($#)); do
     case $1 in
-      -n|--dry-run) dry_run=1 ;;
-      --remove-stale) remove_stale=1 ;;
-      --clean-local) clean_local=1 ;;
-      -h|--help)
-          cat <<-EOT
-	Usage: $SCRIPT_NAME install [OPTIONS]
+      -n|--dry-run)    dry_run=1 ;;
+      --remove-stale)  remove_stale=1 ;;
+      --clean-local)   clean_local=1 ;;
+      -h|--help)       cat <<HELP
+Usage: $SCRIPT_NAME install [OPTIONS]
 
-	Create symlinks in /usr/local/bin for all hosts.conf aliases.
-	Symlinks point to ok_master for server resolution.
+Create symlinks in /usr/local/bin for all hosts.conf aliases.
+Symlinks point to ok_master for server resolution.
 
-	Options:
-	  -n, --dry-run      Preview changes (no modifications)
-	  --remove-stale     Remove symlinks not in hosts.conf
-	  --clean-local      Remove symlinks from script directory
-	  -h, --help         Show this help
+Options:
+  -n, --dry-run      Preview changes (no modifications)
+  --remove-stale     Remove symlinks not in hosts.conf
+  --clean-local      Remove symlinks from script directory
+  -h, --help         Show this help
 
-	Examples:
-	  $SCRIPT_NAME install                  Create/update all symlinks
-	  $SCRIPT_NAME install --dry-run        Preview what would change
-	  $SCRIPT_NAME install --remove-stale   Clean up old symlinks
-	EOT
+Examples:
+  $SCRIPT_NAME install                  Create/update all symlinks
+  $SCRIPT_NAME install --dry-run        Preview what would change
+  $SCRIPT_NAME install --remove-stale   Clean up old symlinks
+HELP
         return 0
         ;;
       *)
@@ -182,8 +182,8 @@ install_symlinks() {
     done
   done
 
-  info "Installing symlinks to $target_dir"
-  ((dry_run)) && info "[dry-run] No changes will be made"
+  info "Installing symlinks to ${target_dir@Q}"
+  ((dry_run)) && info '[dry-run] No changes will be made' ||:
 
   # Create symlinks for all aliases in hosts.conf
   local -- alias target
@@ -191,18 +191,18 @@ install_symlinks() {
     target="$target_dir/$alias"
     if [[ -L "$target" ]]; then
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
-        ((++skipped))
+        skipped+=1
       else
         info "  update: $alias (was → $(readlink "$target"))"
         ((dry_run)) || ln -sf "$ok_master" "$target"
-        ((++updated))
+        updated+=1
       fi
     elif [[ -e "$target" ]]; then
       warn "  $alias: file exists (not a symlink) - skipping"
     else
       info "  create: $alias"
       ((dry_run)) || ln -sf "$ok_master" "$target"
-      ((++created))
+      created+=1
     fi
   done
 
@@ -213,10 +213,10 @@ install_symlinks() {
       [[ -L "$link" ]] || continue
       [[ "$(readlink "$link")" == "$ok_master" ]] || continue
       name="${link##*/}"
-      [[ -n "${ALIAS_TO_FQDN[$name]:-}" ]] && continue
+      [[ -z "${ALIAS_TO_FQDN[$name]:-}" ]] || continue
       info "  remove: $name (stale)"
       ((dry_run)) || rm -f "$link"
-      ((++removed))
+      removed+=1
     done
   fi
 
@@ -228,7 +228,7 @@ install_symlinks() {
       name="${link##*/}"
       info "  remove: $name (local)"
       ((dry_run)) || rm -f "$link"
-      ((++removed))
+      removed+=1
     done
   fi
 
@@ -254,32 +254,35 @@ add_host() {
 
   while (($#)); do
     case $1 in
-      -n|--dry-run) dry_run=1 ;;
+      -n|--dry-run)
+        dry_run=1 ;;
       -h|--help)
-        cat <<-'EOT'
-	Usage: oknav add [-n] <hostname> [alias...]
+        cat <<'HELP'
+Usage: oknav add [-n] <hostname> [alias...]
 
-	Create ad-hoc launcher symlinks for quick SSH access (requires sudo).
-	Hostname must be resolvable via DNS or /etc/hosts.
+Create ad-hoc launcher symlinks for quick SSH access (requires sudo).
+Hostname must be resolvable via DNS or /etc/hosts.
 
-	Arguments:
-	  hostname    FQDN or IP address (must be resolvable)
-	  alias...    Symlink names (defaults to hostname if omitted)
+Arguments:
+  hostname    FQDN or IP address (must be resolvable)
+  alias...    Symlink names (defaults to hostname if omitted)
 
-	Options:
-	  -n, --dry-run   Preview changes (no modifications)
-	  -h, --help      Show this help
+Options:
+  -n, --dry-run   Preview changes (no modifications)
+  -h, --help      Show this help
 
-	Examples:
-	  oknav add server.example.com              Create launcher 'server.example.com'
-	  oknav add server.example.com srv server   Create launchers 'srv' and 'server'
+Examples:
+  oknav add server.example.com              Create launcher 'server.example.com'
+  oknav add server.example.com srv server   Create launchers 'srv' and 'server'
 
-	Note: Ad-hoc hosts are NOT included in cluster operations.
-	      Use hosts.conf with (oknav) option for cluster membership.
-	EOT
+Note: Ad-hoc hosts are NOT included in cluster operations.
+      Use hosts.conf with (oknav) option for cluster membership.
+HELP
         return 0 ;;
-      -*) error "Unknown option ${1@Q}"; return 22 ;;
-      *) break ;;
+      -*)
+        error "Unknown option ${1@Q}"; return 22 ;;
+      *)
+        break ;;
     esac
     shift
   done
@@ -287,23 +290,24 @@ add_host() {
   # Require hostname
   (($#)) || { error "Usage: oknav add [-n] <hostname> [alias...]"; return 1; }
 
-  local -- hostname=$1; shift
+  local -- hostname=$1
+  shift
 
   # Validate hostname is resolvable
   if ! getent hosts "$hostname" &>/dev/null; then
-    error "Cannot resolve hostname: $hostname"
+    error "Cannot resolve hostname ${hostname@Q}"
     return 1
   fi
 
   # Use hostname as alias if none provided
   local -a aliases=("${@:-$hostname}")
 
-  ((dry_run)) && info "[dry-run] No changes will be made"
+  ((dry_run)) && info '[dry-run] No changes will be made' ||:
 
   # Create symlinks (requires sudo for /usr/local/bin)
   local -- alias target reply
   for alias in "${aliases[@]}"; do
-    target="$target_dir/$alias"
+    target="$target_dir"/"$alias"
     if [[ -L "$target" ]]; then
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
         info "  skip: $alias (already exists)"
@@ -343,28 +347,31 @@ remove_host() {
 
   while (($#)); do
     case $1 in
-      -n|--dry-run) dry_run=1 ;;
+      -n|--dry-run)
+        dry_run=1 ;;
       -h|--help)
-        cat <<-'EOT'
-	Usage: oknav remove [-n] <alias>...
+        cat <<'HELP'
+Usage: oknav remove [-n] <alias>...
 
-	Remove launcher symlinks (requires sudo).
-	Only removes symlinks that point to ok_master.
+Remove launcher symlinks (requires sudo).
+Only removes symlinks that point to ok_master.
 
-	Arguments:
-	  alias...    Symlink names to remove
+Arguments:
+  alias...    Symlink names to remove
 
-	Options:
-	  -n, --dry-run   Preview changes (no modifications)
-	  -h, --help      Show this help
+Options:
+  -n, --dry-run   Preview changes (no modifications)
+  -h, --help      Show this help
 
-	Examples:
-	  oknav remove srv                  Remove single launcher
-	  oknav remove srv server backup    Remove multiple launchers
-	EOT
+Examples:
+  oknav remove srv                  Remove single launcher
+  oknav remove srv server backup    Remove multiple launchers
+HELP
         return 0 ;;
-      -*) error "Unknown option ${1@Q}"; return 22 ;;
-      *) break ;;
+      -*)
+        error "Unknown option ${1@Q}"; return 22 ;;
+      *)
+        break ;;
     esac
     shift
   done
@@ -372,12 +379,12 @@ remove_host() {
   # Require at least one alias
   (($#)) || { error 'Usage: oknav remove [-n] <alias>...'; return 1; }
 
-  ((dry_run)) && info '[dry-run] No changes will be made'
+  ((dry_run)) && info '[dry-run] No changes will be made' ||:
 
   # Remove symlinks (requires sudo for /usr/local/bin)
   local -- alias target
   for alias in "$@"; do
-    target="$target_dir/$alias"
+    target="$target_dir"/"$alias"
     if [[ -L "$target" ]]; then
       if [[ "$(readlink "$target")" == "$ok_master" ]]; then
         info "  remove: $alias"
@@ -416,30 +423,30 @@ list_hosts() {
       -p|--parallel)
         parallel_mode=1 ;;
       -h|--help)
-        cat <<-'EOT'
-	Usage: oknav list [-R] [-p]
+        cat <<'HELP'
+Usage: oknav list [-R] [-p]
 
-	List all host launcher symlinks pointing to ok_master.
-	Shows source (hosts.conf or ad-hoc) for each host.
+List all host launcher symlinks pointing to ok_master.
+Shows source (hosts.conf or ad-hoc) for each host.
 
-	Options:
-	  -R, --reachable  Test SSH connectivity (5s timeout per host)
-	  -p, --parallel   Test hosts in parallel (use with -R)
-	  -h, --help       Show this help
+Options:
+  -R, --reachable  Test SSH connectivity (5s timeout per host)
+  -p, --parallel   Test hosts in parallel (use with -R)
+  -h, --help       Show this help
 
-	Output Columns:
-	  NAME    Symlink name (launcher command)
-	  SOURCE  hosts.conf or ad-hoc
-	  STATUS  ✓ reachable, ✗ unreachable (with -R only)
+Output Columns:
+  NAME    Symlink name (launcher command)
+  SOURCE  hosts.conf or ad-hoc
+  STATUS  ✓ reachable, ✗ unreachable (with -R only)
 
-	Examples:
-	  oknav list                List all launchers
-	  oknav list -R             List with connectivity status
-	  oknav list -Rp            Parallel connectivity check
-	EOT
+Examples:
+  oknav list                List all launchers
+  oknav list -R             List with connectivity status
+  oknav list -Rp            Parallel connectivity check
+HELP
         return 0 ;;
       *)
-        warn "Unknown option: $1"
+        warn "Unknown option ${1@Q}"
         return 22 ;;
     esac
     shift
@@ -459,7 +466,7 @@ list_hosts() {
     # Check if symlink target ends with ok_master
     [[ "${target##*/}" == ok_master ]] || continue
     name="${link##*/}"
-    [[ "$name" == ok_master ]] && continue
+    [[ "$name" == ok_master ]] && continue ||:
     aliases+=("$name")
   done < <(find "$target_dir" -maxdepth 1 -type l 2>/dev/null | sort)
 
@@ -471,7 +478,7 @@ list_hosts() {
       fqdn="${ALIAS_TO_FQDN[$name]}"
       source=hosts.conf
     else
-      fqdn="$name"
+      fqdn=$name
       source=ad-hoc
     fi
     host_info+=("$name:$source:$fqdn")
@@ -490,8 +497,7 @@ list_hosts() {
         temp_files+=("$temp_file")
 
         # Background SSH test
-        (
-          fqdn="${info##*:}"
+        ( fqdn="${info##*:}"
           if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
             echo '✓'
           else
@@ -515,7 +521,7 @@ list_hosts() {
         source="${source%%:*}"
         status=$(<"${temp_files[$i]}") || status='✗'
         printf '%-12s %-10s  %s\n' "$name" "$source" "$status"
-        ((++i))
+        i+=1
       done
 
       # Cleanup temp files
@@ -566,9 +572,8 @@ while (($#)); do
       exit 0 ;;
     -h|--help|help)
       usage
-      exit 0;;
-    -[xptDVh]*)
-      # Handle combined short options (e.g., -pD becomes -p -D)
+      exit 0 ;;
+    -[xptDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
       #shellcheck disable=SC2046
       set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
     --)
@@ -632,7 +637,7 @@ for alias in "${ALIAS_LIST[@]}"; do
   is_oknav "$alias" || continue
 
   # Check for (exclude) option
-  is_excluded "$alias" && continue
+  is_excluded "$alias" && continue ||:
 
   # Check for (local-only) constraint violation
   required_host=$(get_local_only_host "$alias")

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#shellcheck disable=SC2015
 # ==============================================================================
 # OKnav System - Common Include File
 # ==============================================================================
@@ -48,7 +49,7 @@ if [[ ! -d "$RUNTIME_DIR" ]] || [[ ! -w "$RUNTIME_DIR" ]]; then
   # Fall back to /tmp if runtime dir not available
   declare -r TEMP_DIR=/tmp
 else
-  declare -r TEMP_DIR="$RUNTIME_DIR"
+  declare -r TEMP_DIR=$RUNTIME_DIR
 fi
 
 # ------------------------------------------------------------------------------
@@ -69,8 +70,8 @@ fi
 # Icons: ◉ info, ▲ warn, ✓ success, ✗ error
 # ------------------------------------------------------------------------------
 _msg() {
-  local -- status="${FUNCNAME[1]}" prefix="$SCRIPT_NAME:" msg
-  case "$status" in
+  local -- prefix="$SCRIPT_NAME:" msg
+  case "${FUNCNAME[1]}" in
     vecho)   : ;;
     info)    prefix+=" ${CYAN}◉${NC}" ;;
     warn)    prefix+=" ${YELLOW}▲${NC}" ;;
@@ -91,7 +92,7 @@ error()   { >&2 _msg "$@"; }                          # Error (always, stderr)
 # die() - Print error and exit
 # Args: exit_code [message...]
 # Default exit code: 1
-die() { (($# > 1)) && error "${@:2}" ||:; exit "${1:-1}"; }
+die() { (($# < 2)) || error "${@:2}"; exit "${1:-0}"; }
 
 
 # ------------------------------------------------------------------------------

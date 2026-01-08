@@ -1,4 +1,5 @@
 #!/bin/bash
+#shellcheck disable=SC2015
 # ==============================================================================
 # OKnav Installation Script
 # ==============================================================================
@@ -29,7 +30,7 @@ declare -r MAN_DIR=/usr/local/share/man/man1
 declare -r COMPLETION_DIR=/etc/bash_completion.d
 
 # Script metadata
-declare -r SCRIPT_NAME="${0##*/}"
+declare -r SCRIPT_NAME=${0##*/}
 TEMP_DIR=$(mktemp -d)
 readonly -- TEMP_DIR
 # Color support
@@ -81,7 +82,7 @@ get_downloader() {
 # Detect if running from local repo or curl-pipe
 is_local_install() {
   local -- script_dir
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
   [[ -f "$script_dir"/oknav && -f "$script_dir"/ok_master && -f "$script_dir"/common.inc.sh ]]
 }
 
@@ -112,7 +113,7 @@ get_source_file() {
 
 # Display usage
 usage() {
-  cat <<EOT
+  cat <<HELP
 ${BOLD}OKnav Installer v$VERSION${NC}
 
 Usage:
@@ -139,7 +140,7 @@ Installed Locations:
   $MAN_DIR/  Manual page
   $COMPLETION_DIR/  Bash completion
 
-EOT
+HELP
 }
 
 # Install OKnav
@@ -349,5 +350,4 @@ main() {
 }
 
 main "$@"
-
 #fin
