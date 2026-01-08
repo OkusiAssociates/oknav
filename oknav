@@ -50,6 +50,7 @@ declare -i TIMEOUT=30              # SSH connection timeout in seconds
 declare -i FORCE_EXEC=0            # Force multi-execute mode (bypass subcommands)
 declare -a TEMP_FILES=()           # Temp files to clean up on exit
 declare -a ok_server_excludes=()   # Servers excluded via -x option
+declare -i PRESERVE_DIR=0          # Pass -d to server commands
 
 # Working variables (declared here to satisfy strict mode)
 declare -i exit_code               # Captured exit code from ssh/timeout
@@ -97,6 +98,7 @@ Usage:
 
 Options:
   -p, --parallel           Execute simultaneously on all servers
+  -d, --dir                Preserve current working directory
   -t, --timeout SECS       SSH connection timeout (default: $TIMEOUT)
   -x, --exclude-host HOST  Exclude host from this run (repeatable)
   -D, --debug              Show server discovery and execution details
@@ -111,6 +113,8 @@ Server Discovery:
 Examples:
   $SCRIPT_NAME uptime                       Run on all servers (sequential)
   $SCRIPT_NAME -p df -h                     Run in parallel
+  $SCRIPT_NAME -d ls                        Run in current directory on all servers
+  $SCRIPT_NAME -pd pwd                      Parallel, preserve directory
   $SCRIPT_NAME -pt 10 uptime                Parallel with 10s timeout
   $SCRIPT_NAME -x ok0 uptime                Exclude ok0 from this run
   $SCRIPT_NAME -- list /tmp                 Run 'list /tmp' (not subcommand)
@@ -565,6 +569,12 @@ while (($#)); do
       shift
       TIMEOUT=${1:-30}  # Use provided timeout or keep default
       [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || die 22 "Invalid timeout value ${TIMEOUT@Q}" ;;
+    -d|--dir)
+      # Verify PWD exists (handles edge case of deleted directory)
+      if [[ ! -d "$PWD" ]]; then
+        die 1 "Current directory does not exist: ${PWD@Q}"
+      fi
+      PRESERVE_DIR=1 ;;
     -D|--debug)
       DEBUG=1 ;;
     -V|--version)
@@ -573,7 +583,7 @@ while (($#)); do
     -h|--help|help)
       usage
       exit 0 ;;
-    -[xptDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
+    -[xptdDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
       #shellcheck disable=SC2046
       set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
     --)
@@ -694,6 +704,7 @@ if ((DEBUG)); then
   >&2 echo "  MODE    = $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')"
   >&2 echo "  TIMEOUT = ${TIMEOUT}s"
   ((${#ok_server_excludes[@]})) && >&2 echo "  EXCLUDE = ${ok_server_excludes[*]}"
+  ((PRESERVE_DIR)) && >&2 echo "  CURDIR  = $PWD"
   >&2 echo
 fi
 
@@ -717,7 +728,8 @@ run_command() {
 
   # Capture all output (stdout + stderr) to temp file
   { echo "+++$server:"
-    timeout "$TIMEOUT"s sudo "$server" "$@" || {
+    #shellcheck disable=SC2046  # Intentional: expands to nothing when PRESERVE_DIR=0
+    timeout "$TIMEOUT"s sudo "$server" $( ((PRESERVE_DIR)) && echo '-d' ) "$@" || {
       exit_code=$?
       case $exit_code in
         124) echo "Connection timeout after $TIMEOUT seconds" ;;
@@ -776,7 +788,8 @@ else
   for server in "${SERVERS[@]}"; do
     ((first)) && echo || first=1
     echo "+++$server:"
-    timeout "$TIMEOUT"s sudo "$server" "$@" || {
+    #shellcheck disable=SC2046  # Intentional: expands to nothing when PRESERVE_DIR=0
+    timeout "$TIMEOUT"s sudo "$server" $( ((PRESERVE_DIR)) && echo '-d' ) "$@" || {
       exit_code=$?
       case $exit_code in
         124) echo "Connection timeout after $TIMEOUT seconds" ;;
