@@ -157,7 +157,7 @@ install_oknav() {
   # Create directories with explicit permissions
   info 'Creating directories...'
   install -d -m 755 "$INSTALL_DIR"       # Package directory (world-readable)
-  install -d -m 750 "$CONFIG_DIR"        # Config directory (group-only, hides server names)
+  install -d -m 755 "$CONFIG_DIR"        # Config directory (world-readable, aliases visible in /usr/local/bin anyway)
   mkdir -p "$MAN_DIR" "$COMPLETION_DIR"  # Usually pre-exist
 
   # Install executable scripts (755)
@@ -174,7 +174,7 @@ install_oknav() {
   success 'Installed common.inc.sh'
 
   # Create VERSION file
-  echo "$VERSION" > "$INSTALL_DIR"/VERSION
+  install -m 644 /dev/stdin "$INSTALL_DIR"/VERSION <<< "$VERSION"
 
   # Create symlinks in /usr/local/bin
   info "Creating symlinks in ${BIN_DIR@Q}..."
@@ -191,19 +191,19 @@ install_oknav() {
     if get_source_file hosts.conf > "$TEMP_DIR"/hosts.conf 2>/dev/null; then
       # Local install with hosts.conf in source directory
       info 'Installing hosts.conf from source directory...'
-      install -m 640 "$TEMP_DIR"/hosts.conf "$CONFIG_DIR"/hosts.conf
+      install -m 644 "$TEMP_DIR"/hosts.conf "$CONFIG_DIR"/hosts.conf
       success "Installed $CONFIG_DIR/hosts.conf from source"
     elif get_source_file hosts.conf.example > "$TEMP_DIR"/hosts.conf 2>/dev/null; then
       # Fall back to example template
       info 'Installing config template...'
-      install -m 640 "$TEMP_DIR"/hosts.conf "$CONFIG_DIR"/hosts.conf
+      install -m 644 "$TEMP_DIR"/hosts.conf "$CONFIG_DIR"/hosts.conf
       success "Created $CONFIG_DIR/hosts.conf (edit this file to add your servers)"
     else
       warn 'No hosts.conf or hosts.conf.example found, skipping config'
     fi
   else
     info "Config already exists: $CONFIG_DIR/hosts.conf (preserved)"
-    chmod 640 "$CONFIG_DIR"/hosts.conf  # Enforce permissions on existing file
+    chmod 644 "$CONFIG_DIR"/hosts.conf  # Enforce permissions on existing file
   fi
 
   # Install manpage

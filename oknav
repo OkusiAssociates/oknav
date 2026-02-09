@@ -21,7 +21,7 @@
 #   0    Success
 #   1    General error (no servers found, missing config)
 #   22   Invalid option (EINVAL)
-#   124  SSH connection timeout
+#   124  Execution timeout
 #   125  Timeout command error
 #   126  Command not found
 #
@@ -46,7 +46,8 @@ source "$SCRIPT_DIR"/common.inc.sh || exit 1
 # Runtime Configuration
 # ------------------------------------------------------------------------------
 declare -i PARALLEL=0              # Execution mode: 0=sequential, 1=parallel
-declare -i TIMEOUT=30              # SSH connection timeout in seconds
+declare -i TIMEOUT=${TIMEOUT:-120} # Overall execution timeout in seconds
+declare -i CONNECT_TIMEOUT=${OKNAV_CONNECT_TIMEOUT:-10}  # SSH handshake timeout
 declare -i FORCE_EXEC=0            # Force multi-execute mode (bypass subcommands)
 declare -a TEMP_FILES=()           # Temp files to clean up on exit
 declare -a ok_server_excludes=()   # Servers excluded via -x option
@@ -87,6 +88,13 @@ trap 'cleanup $?' SIGINT SIGTERM EXIT
 preserve_dir() { ((PRESERVE_DIR == 0)) || echo '-d'; }
 
 # ------------------------------------------------------------------------------
+# connect_timeout_opt() - Output -c N if connect timeout is set
+# Used in command substitution to pass connect-timeout to ok_master.
+# Returns: 0 always (safe for set -e)
+# ------------------------------------------------------------------------------
+connect_timeout_opt() { echo "-c $CONNECT_TIMEOUT"; }
+
+# ------------------------------------------------------------------------------
 # usage() - Display help message
 # ------------------------------------------------------------------------------
 usage() {
@@ -104,13 +112,14 @@ Usage:
   $SCRIPT_NAME list [OPTIONS]               List installed host symlinks
 
 Options:
-  -p, --parallel           Execute simultaneously on all servers
-  -d, --dir                Preserve current working directory
-  -t, --timeout SECS       SSH connection timeout (default: $TIMEOUT)
-  -x, --exclude-host HOST  Exclude host from this run (repeatable)
-  -D, --debug              Show server discovery and execution details
-  -V, --version            Show version
-  -h, --help               Show this help
+  -p, --parallel               Execute simultaneously on all servers
+  -d, --dir                    Preserve current working directory
+  -c, --connect-timeout SECS   SSH connect timeout (default: $CONNECT_TIMEOUT)
+  -t, --timeout SECS           Overall execution timeout (default: $TIMEOUT)
+  -x, --exclude-host HOST      Exclude host from this run (repeatable)
+  -D, --debug                  Show server discovery and execution details
+  -V, --version                Show version
+  -h, --help                   Show this help
 
 Server Discovery:
   Servers are auto-discovered from hosts.conf. Only entries with (oknav)
@@ -205,14 +214,14 @@ HELP
         skipped+=1
       else
         info "  update: $alias (was → $(readlink "$target"))"
-        ((dry_run)) || ln -sf "$ok_master" "$target"
+        ((dry_run)) || sudo ln -sf "$ok_master" "$target"
         updated+=1
       fi
     elif [[ -e "$target" ]]; then
       warn "  $alias: file exists (not a symlink) - skipping"
     else
       info "  create: $alias"
-      ((dry_run)) || ln -sf "$ok_master" "$target"
+      ((dry_run)) || sudo ln -sf "$ok_master" "$target"
       created+=1
     fi
   done
@@ -226,7 +235,7 @@ HELP
       name="${link##*/}"
       [[ -z "${ALIAS_TO_FQDN[$name]:-}" ]] || continue
       info "  remove: $name (stale)"
-      ((dry_run)) || rm -f "$link"
+      ((dry_run)) || sudo rm -f "$link"
       removed+=1
     done
   fi
@@ -509,7 +518,7 @@ HELP
 
         # Background SSH test
         ( fqdn="${info##*:}"
-          if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
+          if timeout 10 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
             echo '✓'
           else
             echo '✗'
@@ -545,7 +554,7 @@ HELP
         source="${info#*:}"
         source="${source%%:*}"
         fqdn="${info##*:}"
-        if timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
+        if timeout 10 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
           status='✓'
         else
           status='✗'
@@ -572,9 +581,13 @@ while (($#)); do
       ok_server_excludes+=("$1");;
     -p|--parallel|parallel)
       PARALLEL=1 ;;
+    -c|--connect-timeout)
+      shift
+      CONNECT_TIMEOUT=${1:-10}
+      [[ "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || die 22 "Invalid connect-timeout value ${CONNECT_TIMEOUT@Q}" ;;
     -t|--timeout)
       shift
-      TIMEOUT=${1:-30}  # Use provided timeout or keep default
+      TIMEOUT=${1:-120}  # Use provided timeout or keep default
       [[ "$TIMEOUT" =~ ^[0-9]+$ ]] || die 22 "Invalid timeout value ${TIMEOUT@Q}" ;;
     -d|--dir)
       # Verify PWD exists (handles edge case of deleted directory)
@@ -590,7 +603,7 @@ while (($#)); do
     -h|--help|help)
       usage
       exit 0 ;;
-    -[xptdDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
+    -[xcptdDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
       #shellcheck disable=SC2046
       set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
     --)
@@ -710,6 +723,7 @@ if ((DEBUG)); then
   >&2 echo "  COMMAND = $*"
   >&2 echo "  MODE    = $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')"
   >&2 echo "  TIMEOUT = ${TIMEOUT}s"
+  >&2 echo "  CONN_TIMEOUT = ${CONNECT_TIMEOUT}s"
   ((${#ok_server_excludes[@]})) && >&2 echo "  EXCLUDE = ${ok_server_excludes[*]}"
   ((PRESERVE_DIR)) && >&2 echo "  CURDIR  = $PWD"
   >&2 echo
@@ -735,11 +749,11 @@ run_command() {
 
   # Capture all output (stdout + stderr) to temp file
   { echo "+++$server:"
-    #shellcheck disable=SC2046  # preserve_dir outputs '-d' or nothing (no spaces)
-    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) "$@" || {
+    #shellcheck disable=SC2046  # preserve_dir/connect_timeout_opt output flags (no spaces to worry about)
+    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" || {
       exit_code=$?
       case $exit_code in
-        124) echo "Connection timeout after $TIMEOUT seconds" ;;
+        124) echo "Execution timeout after $TIMEOUT seconds" ;;
         125) echo 'Timeout command error' ;;
         126) echo "Command not found: $server" ;;
       esac
@@ -795,11 +809,11 @@ else
   for server in "${SERVERS[@]}"; do
     ((first)) && echo || first=1
     echo "+++$server:"
-    #shellcheck disable=SC2046  # preserve_dir outputs '-d' or nothing (no spaces)
-    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) "$@" || {
+    #shellcheck disable=SC2046  # preserve_dir/connect_timeout_opt output flags (no spaces to worry about)
+    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" || {
       exit_code=$?
       case $exit_code in
-        124) echo "Connection timeout after $TIMEOUT seconds" ;;
+        124) echo "Execution timeout after $TIMEOUT seconds" ;;
         125) echo 'Timeout command error' ;;
         126) echo "Command not found ${server@Q}" ;;
       esac
