@@ -152,8 +152,15 @@ and displayed in server order after all complete.
 Preserve current working directory on remote servers. The directory
 must exist on each remote system.
 .TP
+.BR \-c ", " \-\-connect\-timeout " " \fISECS\fR
+Set SSH connection (handshake) timeout in seconds. Default is 10.
+This controls how long SSH waits to establish a connection before
+giving up. Unreachable hosts fail fast without consuming the
+execution timeout.
+.TP
 .BR \-t ", " \-\-timeout " " \fISECS\fR
-Set connection timeout in seconds. Default is 30.
+Set overall execution timeout in seconds. Default is 120.
+This wraps the entire SSH call (connection + command execution).
 .TP
 .BR \-x ", " \-\-exclude\-host " " \fIHOST\fR
 Exclude
@@ -226,6 +233,11 @@ Connect as root user. Shortcut for
 Connect as
 .IR USER .
 Default is the current user.
+.TP
+.BR \-c ", " \-\-connect\-timeout " " \fISECS\fR
+Set SSH connection (handshake) timeout in seconds. Default is 10.
+Passed to SSH as
+.BR ConnectTimeout .
 .TP
 .BR \-d ", " \-\-dir
 Preserve current working directory on remote server. The directory
@@ -334,6 +346,9 @@ Timeout command error.
 Command not found (server unreachable).
 .\"
 .SH ENVIRONMENT
+.TP
+.B OKNAV_CONNECT_TIMEOUT
+Override default SSH connect timeout (in seconds). Default is 10.
 .TP
 .B OKNAV_HOSTS_CONF
 Override path to hosts.conf. Primarily used for testing.

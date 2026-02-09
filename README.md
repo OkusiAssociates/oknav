@@ -114,6 +114,7 @@ srv1 [OPTIONS] [command]
 |--------|-------------|
 | `-r, --root` | Connect as root |
 | `-u, --user USER` | Connect as specified user |
+| `-c, --connect-timeout S` | SSH connect timeout (default: 10) |
 | `-d, --dir` | Preserve current working directory |
 | `-D, --debug` | Show connection parameters |
 | `-V, --version` | Show version |
@@ -143,7 +144,8 @@ oknav [OPTIONS] -- <command>    # Force command mode
 |--------|-------------|
 | `-p, --parallel` | Execute simultaneously |
 | `-d, --dir` | Preserve current working directory |
-| `-t, --timeout SECS` | Connection timeout (default: 30) |
+| `-c, --connect-timeout S` | SSH connect timeout (default: 10) |
+| `-t, --timeout SECS` | Execution timeout (default: 120) |
 | `-x, --exclude-host HOST` | Exclude server (repeatable) |
 | `-D, --debug` | Show server discovery details |
 | `--` | Force command mode (bypass subcommand detection) |
@@ -308,11 +310,13 @@ bash -n oknav && bash -n ok_master && bash -n common.inc.sh
 |------|--------|-------------|
 | `ok_master` | `-r` | Root user |
 | `ok_master` | `-u USER` | Specific user |
+| `ok_master` | `-c SECS` | SSH connect timeout (default: 10) |
 | `ok_master` | `-d` | Preserve directory |
 | `ok_master` | `-D` | Debug mode |
 | `oknav` | `-p` | Parallel execution |
 | `oknav` | `-d` | Preserve directory |
-| `oknav` | `-t SECS` | Timeout (default: 30) |
+| `oknav` | `-c SECS` | SSH connect timeout (default: 10) |
+| `oknav` | `-t SECS` | Execution timeout (default: 120) |
 | `oknav` | `-x HOST` | Exclude host (repeatable) |
 | `oknav` | `-D` | Debug mode |
 | `oknav` | `--` | Force command mode |
@@ -341,6 +345,7 @@ bash -n oknav && bash -n ok_master && bash -n common.inc.sh
 
 | Variable | Description |
 |----------|-------------|
+| `OKNAV_CONNECT_TIMEOUT` | Override default SSH connect timeout (default: 10) |
 | `OKNAV_HOSTS_CONF` | Override hosts.conf location |
 | `OKNAV_TARGET_DIR` | Override target directory (for testing) |
 | `XDG_RUNTIME_DIR` | Temp file location (falls back to `/tmp`) |
@@ -410,9 +415,10 @@ oknav/
 - Use `-D` for debug output
 
 **Timeout errors**
-- Default timeout is 30 seconds
-- Use `-t SECS` for slow networks
-- Check network connectivity
+- Connect timeout (`-c`): controls SSH handshake (default: 10s)
+- Execution timeout (`-t`): controls total time (default: 120s)
+- Use `-c SECS` for unreachable hosts to fail fast
+- Use `-t SECS` for long-running commands
 
 **"No servers found"**
 - Verify `hosts.conf` has entries with `(oknav)` option

@@ -40,12 +40,16 @@ _ok_master_completion() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    opts="-r --root -u --user -d --dir -D --debug -V --version -h --help"
+    opts="-r --root -u --user -c --connect-timeout -d --dir -D --debug -V --version -h --help"
 
     case "$prev" in
         -u|--user)
             # Complete with system users
             COMPREPLY=( $(compgen -u -- "$cur") )
+            return 0
+            ;;
+        -c|--connect-timeout)
+            COMPREPLY=( $(compgen -W "3 5 10 15 30" -- "$cur") )
             return 0
             ;;
         *)
@@ -67,10 +71,14 @@ _oknav_completion() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    opts="-p --parallel -d --dir -t --timeout -x --exclude-host -D --debug -h --help -V --version"
+    opts="-p --parallel -d --dir -c --connect-timeout -t --timeout -x --exclude-host -D --debug -h --help -V --version"
     subcommands="install add remove list"
 
     case "$prev" in
+        -c|--connect-timeout)
+            COMPREPLY=( $(compgen -W "3 5 10 15 30" -- "$cur") )
+            return 0
+            ;;
         -t|--timeout)
             COMPREPLY=( $(compgen -W "5 10 15 30 60 120 300" -- "$cur") )
             return 0
