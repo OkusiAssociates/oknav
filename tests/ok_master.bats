@@ -204,6 +204,37 @@ run_ok_master_debug() {
 }
 
 # ==============================================================================
+# Connect Timeout Tests (via debug output)
+# ==============================================================================
+
+@test "-c sets ConnectTimeout in debug output" {
+  run_ok_master_debug ok0 -c 5 uptime
+  assert_output_contains 'CONN_TIMEOUT = 5s'
+  assert_output_contains 'ConnectTimeout=5'
+}
+
+@test "--connect-timeout sets ConnectTimeout in debug output" {
+  run_ok_master_debug ok0 --connect-timeout 15 uptime
+  assert_output_contains 'CONN_TIMEOUT = 15s'
+  assert_output_contains 'ConnectTimeout=15'
+}
+
+@test "default ConnectTimeout is 10 (debug output)" {
+  run_ok_master_debug ok0 uptime
+  assert_output_contains 'CONN_TIMEOUT = 10s'
+  assert_output_contains 'ConnectTimeout=10'
+}
+
+@test "-c with non-numeric value exits with non-zero" {
+  create_server_symlinks "$TEST_TEMP_DIR" ok0
+  create_hosts_conf "$TEST_TEMP_DIR" "server0.test.local ok0"
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./ok0 -c abc uptime
+  # declare -i triggers bash error on non-numeric, so status != 0
+  ((status != 0))
+}
+
+# ==============================================================================
 # Combined Options Tests (via debug output)
 # ==============================================================================
 
@@ -244,15 +275,15 @@ run_ok_master_debug() {
 @test "no command argument triggers interactive mode with -t option (debug output)" {
   run_ok_master_debug ok0
   # Interactive mode should add -t option for pseudo-terminal
-  assert_output_contains 'SSH     = ssh -t'
+  assert_output_contains 'SSH     = ssh -o ConnectTimeout=10 -t'
   # And COMMAND should be 'exec bash' or show interactive shell
   assert_output_contains 'COMMAND = exec bash'
 }
 
 @test "with command argument, SSHOPTS is empty (debug output)" {
   run_ok_master_debug ok0 uptime
-  # Command mode should NOT have -t in SSH line
-  assert_output_contains 'SSH     = ssh  '
+  # Command mode should NOT have -t in SSH line (but has ConnectTimeout)
+  assert_output_contains 'SSH     = ssh -o ConnectTimeout=10  '
 }
 
 # ==============================================================================

@@ -430,8 +430,8 @@ setup_oknav_env() {
   cd "$TEST_TEMP_DIR" || return 1
 
   run ./oknav uptime
-  # Timeout mock should have been called
-  assert_mock_called "TIMEOUT_CALL" "30s"
+  # Timeout mock should have been called with default timeout
+  assert_mock_called "TIMEOUT_CALL" "120s"
 }
 
 @test "custom timeout value is passed to timeout command" {
@@ -442,7 +442,7 @@ setup_oknav_env() {
   assert_mock_called "TIMEOUT_CALL" "60s"
 }
 
-@test "timeout exit 124 shows timeout message" {
+@test "timeout exit 124 shows execution timeout message" {
   setup_oknav_env ok0
 
   # Create timeout mock that returns 124
@@ -456,7 +456,47 @@ EOF
   cd "$TEST_TEMP_DIR" || return 1
 
   run ./oknav uptime
-  assert_output_contains "Connection timeout"
+  assert_output_contains "Execution timeout"
+}
+
+# ==============================================================================
+# Connect Timeout Tests
+# ==============================================================================
+
+@test "-c sets connect timeout value" {
+  setup_oknav_env
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav -c 5 -D uptime
+  assert_output_contains "CONN_TIMEOUT = 5s"
+}
+
+@test "--connect-timeout sets connect timeout value" {
+  setup_oknav_env
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav --connect-timeout 15 -D uptime
+  assert_output_contains "CONN_TIMEOUT = 15s"
+}
+
+@test "-c with non-numeric value exits with non-zero" {
+  setup_oknav_env
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav -c abc uptime
+  ((status != 0))
+}
+
+@test "-pc 5 combines parallel and connect-timeout" {
+  setup_oknav_env
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav -pc 5 -D uptime
+  assert_output_contains "parallel"
+  assert_output_contains "CONN_TIMEOUT = 5s"
+}
+
+@test "-c passes connect-timeout to server command" {
+  setup_oknav_env ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./oknav -c 5 uptime
+  assert_mock_called "SUDO_CALL" "-c 5"
 }
 
 # ==============================================================================
