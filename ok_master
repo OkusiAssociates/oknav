@@ -6,6 +6,10 @@
 # SSH connection handler invoked via symlinks. The symlink name (srv1, ok0,
 # etc.) is resolved through hosts.conf to determine the target FQDN.
 #
+# On SSH connection failure (exit 255), optionally retries through a relay
+# host via ProxyJump (-J). Relay configured via /etc/oknav/relay.conf,
+# OKNAV_RELAY env, or --relay flag. See usage for priority order.
+#
 # Resolution order:
 #   1. Look up symlink name in hosts.conf → FQDN
 #   2. If not found, use symlink name directly as hostname (ad-hoc)
@@ -43,6 +47,8 @@ declare -- CURDIR=''               # Remote directory (-d preserves PWD)
 declare -- CMD=''                  # Remote command (empty = interactive shell)
 declare -- SSHOPTS=''              # SSH options (-t for interactive)
 declare -i CONNECT_TIMEOUT=${OKNAV_CONNECT_TIMEOUT:-10}  # SSH handshake timeout
+declare -- RELAY=''                # Relay/jump host for failover
+declare -i NO_RELAY=0             # Disable relay for this invocation
 
 usage() {
   cat <<HELP
@@ -57,9 +63,16 @@ Options:
   -u, --user USER           Connect as specified user
   -c, --connect-timeout S   SSH connect timeout in seconds (default: $CONNECT_TIMEOUT)
   -d, --dir                 Preserve current working directory
+  -R, --relay HOST          Use HOST as relay on connection failure
+  --no-relay                Disable relay failover for this invocation
   -D, --debug               Show connection parameters before connecting
   -V, --version             Show version
   -h, --help                Show this help
+
+Relay Failover:
+  On SSH connection failure (exit 255), retry via ProxyJump through a relay.
+  Priority: --relay flag > OKNAV_RELAY env > /etc/oknav/relay.conf
+  Set OKNAV_RELAY=none to disable. Use non-WG endpoints for WG outages.
 
 Examples:
   $SERVER uptime                    Run 'uptime' on server
@@ -67,6 +80,7 @@ Examples:
   $SERVER -rd                       Root shell in current directory
   $SERVER -u deploy git pull        Run as specific user
   $SERVER "df -h | grep data"       Commands with pipes (quote them)
+  $SERVER --relay user@1.2.3.4 cmd  Force relay through specific host
 
 Server Resolution:
   Symlink name '$SERVER' is looked up in hosts.conf to get FQDN.
@@ -86,11 +100,13 @@ while (($#)); do
       CONNECT_TIMEOUT=${1:-10}
       [[ "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || die 22 "Invalid connect-timeout value ${CONNECT_TIMEOUT@Q}" ;;
     -d|--dir)     CURDIR=$PWD ;;
+    -R|--relay)   shift; RELAY=${1:-}; [[ -n "$RELAY" ]] || die 22 "--relay requires a host" ;;
+    --no-relay)   NO_RELAY=1 ;;
     -D|--debug)   DEBUG=1 ;;
     -V|--version) echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
     -h|--help)    usage; exit 0 ;;
 
-    -[ucrdDVh]*)  # Expand combined options: -rd → -r -d
+    -[ucrdDVhR]*) # Expand combined options: -rd → -r -d
                   #shellcheck disable=SC2046
                   set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
 
@@ -112,6 +128,32 @@ if [[ $(basename -- "$SERVER") == "$SCRIPT_NAME" ]]; then
     '  oknav add myserver.example.com myserver' \
     '  oknav list'
 fi
+
+# ------------------------------------------------------------------------------
+# get_relay() - Resolve relay host from CLI flag, env var, or config file
+# Returns: 0 with relay host on stdout, 1 if no relay configured
+# Priority: --relay flag → OKNAV_RELAY env → /etc/oknav/relay.conf
+# ------------------------------------------------------------------------------
+get_relay() {
+  # CLI flag already set RELAY — return it
+  [[ -n "$RELAY" ]] && { echo "$RELAY"; return 0; }
+  # Environment variable
+  if [[ -n "${OKNAV_RELAY:-}" ]]; then
+    [[ "$OKNAV_RELAY" == none ]] && return 1
+    echo "$OKNAV_RELAY"
+    return 0
+  fi
+  # Config file
+  local -- conf='/etc/oknav/relay.conf'
+  [[ -f "$conf" ]] || return 1
+  local -- line
+  while IFS= read -r line; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    echo "${line%%[[:space:]]*}"
+    return 0
+  done < "$conf"
+  return 1
+}
 
 # ------------------------------------------------------------------------------
 # Server Resolution: symlink name → FQDN via hosts.conf
@@ -140,11 +182,15 @@ fi
 
 # Debug: show connection parameters
 if ((DEBUG)); then
+  declare -- _relay
+  _relay=$(get_relay) || _relay='<none>'
+  ((NO_RELAY)) && _relay='<disabled>'
   >&2 echo "DEBUG: Connection parameters:"
   >&2 echo "  ALIAS   = $ALIAS"
   >&2 echo "  SERVER  = $SERVER"
   >&2 echo "  USER    = $USER"
   >&2 echo "  CONN_TIMEOUT = ${CONNECT_TIMEOUT}s"
+  >&2 echo "  RELAY   = $_relay"
   [[ -z "$CURDIR" ]] || >&2 echo "  CURDIR  = $CURDIR"
   >&2 echo "  COMMAND = ${CMD:-<interactive shell>}"
   >&2 echo "  SSH     = ssh -o ConnectTimeout=$CONNECT_TIMEOUT $SSHOPTS ${USER}@${SERVER}"
@@ -152,7 +198,30 @@ if ((DEBUG)); then
 fi
 
 # ------------------------------------------------------------------------------
-# Execute SSH (exec replaces this process)
+# Execute SSH (with optional relay failover on connection failure)
 # ------------------------------------------------------------------------------
-exec /usr/bin/ssh -o ConnectTimeout="$CONNECT_TIMEOUT" $SSHOPTS "${USER}@${SERVER}" "$CMD"
+declare -- relay_target=''
+if ((! NO_RELAY)); then
+  relay_target=$(get_relay) || relay_target=''
+fi
+
+if [[ -z "$relay_target" ]]; then
+  # No relay configured — exec directly (zero overhead, original behavior)
+  exec /usr/bin/ssh -o ConnectTimeout="$CONNECT_TIMEOUT" $SSHOPTS "${USER}@${SERVER}" "$CMD"
+fi
+
+# Relay configured — try direct first, relay on exit 255
+declare -i ssh_exit=0
+/usr/bin/ssh -o ConnectTimeout="$CONNECT_TIMEOUT" $SSHOPTS "${USER}@${SERVER}" "$CMD" \
+  || ssh_exit=$?
+
+if ((ssh_exit == 255)); then
+  info "Direct connection failed, relaying via ${relay_target}..."
+  exec /usr/bin/ssh \
+    -o "ProxyCommand=ssh -o ConnectTimeout=${CONNECT_TIMEOUT} ${relay_target} 'exec nc -w ${CONNECT_TIMEOUT} %h %p'" \
+    -o ConnectTimeout="$CONNECT_TIMEOUT" \
+    -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
+    $SSHOPTS "${USER}@${SERVER}" "$CMD"
+fi
+exit "$ssh_exit"
 #fin
