@@ -16,7 +16,8 @@ Lightweight SSH orchestration for multi-server environments.
 
 ```bash
 # 1. Install
-curl -sSL https://raw.githubusercontent.com/OkusiAssociates/oknav/main/install.sh | sudo bash
+git clone https://github.com/OkusiAssociates/oknav.git
+cd oknav && sudo make install
 
 # 2. Configure servers
 sudo nano /etc/oknav/hosts.conf
@@ -34,10 +35,10 @@ oknav -p df -h           # Parallel execution
 
 ## Installation
 
-### Quick Install
-
 ```bash
-curl -sSL https://raw.githubusercontent.com/OkusiAssociates/oknav/main/install.sh | sudo bash
+git clone https://github.com/OkusiAssociates/oknav.git
+cd oknav
+sudo make install
 ```
 
 Installs to:
@@ -50,19 +51,13 @@ Installs to:
 | `/usr/local/share/man/man1/oknav.1` | Manual page |
 | `/etc/bash_completion.d/oknav` | Bash completion |
 
-### From Source
-
-```bash
-git clone https://github.com/OkusiAssociates/oknav.git
-cd oknav
-sudo ./install.sh
-```
-
 ### Uninstall
 
 ```bash
-sudo /usr/local/share/oknav/install.sh --uninstall
+sudo make uninstall
 ```
+
+Configuration in `/etc/oknav/` is preserved on uninstall. Remove manually if no longer needed.
 
 ## Configuration
 
@@ -99,7 +94,7 @@ adhoc.example.com     adhoc
 - **Primary alias**: First alias listed is used for cluster operations
 - **Combined options**: Separate with commas: `(oknav,local-only:myhost)`
 - **Ad-hoc entries**: Servers without `(oknav)` are accessible but not in cluster
-- **Config priority**: `/etc/oknav/hosts.conf` > `$SCRIPT_DIR/hosts.conf`
+- **Config priority**: `$OKNAV_HOSTS_CONF` > `/etc/oknav/hosts.conf` > `$SCRIPT_DIR/hosts.conf`
 
 ## Usage
 
@@ -150,9 +145,9 @@ When an SSH connection fails (exit code 255), ok_master can automatically retry 
 | 4 | `/etc/oknav/relay.conf` | Persistent machine-specific default |
 | 5 | No relay configured | Direct connection only (original behavior) |
 
-**relay.conf format**: A single line containing an SSH config Host name or `user@host:port`.
+**relay.conf format**: First non-blank, non-comment line; first word is used as the SSH target (hostname, `user@host`, or SSH config Host name).
 
-**Behavior**: When no relay is configured, ok_master uses `exec ssh` with zero overhead (original behavior). When a relay is configured, it tries a direct connection first and only relays on exit code 255. Other exit codes pass through unchanged. The relay info message is suppressed in quiet/cluster mode.
+**Behavior**: When no relay is configured, ok_master uses `exec ssh` with zero overhead (original behavior). When a relay is configured, it tries a direct connection first and only relays on exit code 255. Other exit codes pass through unchanged.
 
 **Examples**:
 
@@ -315,26 +310,20 @@ In parallel mode (`-p`), output is collected and displayed in server order after
 ### Linting
 
 ```bash
-shellcheck -x oknav ok_master common.inc.sh install.sh
+make lint
 ```
 
 ### Testing
 
 ```bash
 # Run all tests
-bats tests/
+make test
 
 # Run specific test file
 bats tests/oknav.bats
 
 # Filter by test name
 bats tests/oknav.bats --filter "parallel"
-```
-
-### Syntax Validation
-
-```bash
-bash -n oknav && bash -n ok_master && bash -n common.inc.sh
 ```
 
 ## Reference
@@ -401,7 +390,7 @@ bash -n oknav && bash -n ok_master && bash -n common.inc.sh
 ├── oknav              # Cluster orchestrator
 ├── ok_master          # Individual server handler
 ├── common.inc.sh      # Shared functions
-└── install.sh         # Installer
+└── VERSION            # Installed version
 
 /etc/oknav/
 ├── hosts.conf         # Server configuration
@@ -420,7 +409,7 @@ oknav/
 ├── oknav              # Cluster orchestrator
 ├── ok_master          # Individual server handler
 ├── common.inc.sh      # Shared functions
-├── install.sh         # Installer
+├── Makefile           # BCS1212 installer
 ├── hosts.conf.example # Configuration template
 ├── oknav.1            # Man page
 ├── oknav.bash_completion

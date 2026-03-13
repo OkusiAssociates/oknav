@@ -426,7 +426,7 @@ HELP
 # list_hosts() - List all host symlinks pointing to ok_master
 # Shows which hosts are defined in hosts.conf vs ad-hoc additions.
 # Args: [-R|--reachable] [-p|--parallel] [-h|--help]
-# Returns: 0 always
+# Returns: 0 on success, 22 on invalid option
 # ------------------------------------------------------------------------------
 list_hosts() {
   local -- target_dir=${OKNAV_TARGET_DIR:-/usr/local/bin}
