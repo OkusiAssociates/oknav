@@ -6,7 +6,7 @@
 # Shared configuration and utility functions for oknav and ok_master.
 # Must be sourced (not executed): source common.inc.sh
 #
-# Exports (readonly):
+# Provides (readonly, not exported):
 #   VERSION              - OKnav version string
 #   TEMP_DIR             - Temp directory (XDG_RUNTIME_DIR preferred, /tmp fallback)
 #

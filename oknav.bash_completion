@@ -15,10 +15,17 @@ _oknav_get_script_dir() {
 }
 
 # Get list of server aliases from hosts.conf
+# Search order: $OKNAV_HOSTS_CONF > /etc/oknav/ > script directory
 _oknav_get_aliases() {
     local script_dir hosts_file
-    script_dir=$(_oknav_get_script_dir) || return 1
-    hosts_file="$script_dir/hosts.conf"
+    if [[ -n "${OKNAV_HOSTS_CONF:-}" && -f "$OKNAV_HOSTS_CONF" ]]; then
+        hosts_file="$OKNAV_HOSTS_CONF"
+    elif [[ -f /etc/oknav/hosts.conf ]]; then
+        hosts_file=/etc/oknav/hosts.conf
+    else
+        script_dir=$(_oknav_get_script_dir) || return 1
+        hosts_file="$script_dir/hosts.conf"
+    fi
     [[ -f "$hosts_file" ]] || return 1
 
     # Parse hosts.conf: extract all aliases (skip FQDN, skip options)
@@ -40,7 +47,7 @@ _ok_master_completion() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    opts="-r --root -u --user -c --connect-timeout -d --dir -D --debug -V --version -h --help"
+    opts="-r --root -u --user -c --connect-timeout -d --dir -R --relay --no-relay -D --debug -V --version -h --help"
 
     case "$prev" in
         -u|--user)
@@ -50,6 +57,11 @@ _ok_master_completion() {
             ;;
         -c|--connect-timeout)
             COMPREPLY=( $(compgen -W "3 5 10 15 30" -- "$cur") )
+            return 0
+            ;;
+        -R|--relay)
+            # Complete with known hostnames
+            COMPREPLY=( $(compgen -A hostname -- "$cur") )
             return 0
             ;;
         *)

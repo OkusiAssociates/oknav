@@ -1,7 +1,7 @@
 .\" OKnav System Manual Page
-.\" Generated: 2026-01-08
+.\" Generated: 2026-03-13
 .\"
-.TH OKNAV 1 "January 2026" "OKnav 2.3.3" "User Commands"
+.TH OKNAV 1 "March 2026" "OKnav 2.3.7" "User Commands"
 .\"
 .SH NAME
 oknav \- SSH orchestration system for multi-server command execution
@@ -53,8 +53,8 @@ Symlinks to
 .B ok_master
 (e.g.,
 .IR srv1 ", " srv2 )
-provide enhanced SSH access to specific servers with user switching
-and directory preservation.
+provide enhanced SSH access to specific servers with user switching,
+directory preservation, and optional relay failover.
 .PP
 Server mappings are defined in
 .I hosts.conf
@@ -187,8 +187,7 @@ Remove symlinks in
 that point to ok_master but are not defined in hosts.conf.
 .TP
 .B \-\-clean\-local
-Remove symlinks from the script directory (except
-.BR oknav ).
+Remove ok*-prefixed symlinks from the script directory.
 .TP
 .BR \-h ", " \-\-help
 Display install help and exit.
@@ -212,7 +211,8 @@ Display remove help and exit.
 .SS oknav list Options
 .TP
 .BR \-R ", " \-\-reachable
-Test each host for SSH connectivity. Uses a 5-second timeout per host.
+Test each host for SSH connectivity (3-second connect timeout,
+10-second total timeout per host).
 Displays a checkmark or cross symbol indicating connectivity status.
 .TP
 .BR \-p ", " \-\-parallel
@@ -243,8 +243,20 @@ Passed to SSH as
 Preserve current working directory on remote server. The directory
 must exist on the remote system.
 .TP
+.BR \-R ", " \-\-relay " " \fIHOST\fR
+Use
+.I HOST
+as relay on SSH connection failure (exit 255). Overrides
+.B OKNAV_RELAY
+and
+.IR relay.conf .
+.TP
+.B \-\-no\-relay
+Disable relay failover for this invocation, even if configured via
+environment or config file.
+.TP
 .BR \-D ", " \-\-debug
-Show connection parameters (ALIAS, USER, SERVER, CMD, etc.) to stderr.
+Show connection parameters (ALIAS, USER, SERVER, RELAY, CMD, etc.) to stderr.
 .TP
 .BR \-V ", " \-\-version
 Display version information and exit.
@@ -252,11 +264,51 @@ Display version information and exit.
 .BR \-h ", " \-\-help
 Display help message and exit.
 .\"
+.SS Relay Failover (ok_master)
+On SSH connection failure (exit code 255), ok_master can automatically
+retry through a relay host via
+.B ProxyCommand
+(nc). This is opt-in and machine-specific.
+.PP
+Resolution priority (highest first):
+.RS
+.IP 1. 4
+.B \-\-no\-relay
+flag \(em disable relay for this invocation
+.IP 2. 4
+.BR \-\-relay " " \fIHOST\fR
+flag \(em override relay for this invocation
+.IP 3. 4
+.B OKNAV_RELAY
+env var \(em override relay (set to
+.B none
+to disable)
+.IP 4. 4
+.I /etc/oknav/relay.conf
+\(em persistent machine-specific default
+.IP 5. 4
+No relay configured \(em direct connection only
+.RE
+.PP
+When no relay is configured, ok_master uses
+.B exec ssh
+with zero overhead.
+When a relay is configured, it tries a direct connection first and
+only relays on exit code 255. Other exit codes pass through unchanged.
+.PP
+The relay.conf file format is one relay target per line (first non-blank,
+non-comment line is used). The first word is used as the SSH target
+(hostname,
+.IR user@host ,
+or SSH config Host name).
+.\"
 .SH CONFIGURATION
 .SS hosts.conf Format
 Server mappings are defined in
 .I hosts.conf
 which is searched in this order:
+.B $OKNAV_HOSTS_CONF
+(env override), then
 .I /etc/oknav/hosts.conf
 (system-wide), then the script directory (development).
 .PP
@@ -337,13 +389,13 @@ Direct ok_master execution. The ok_master script must be invoked
 via a symlink (e.g., srv1), not directly as ok_master.
 .TP
 .B 124
-Connection timeout reached.
+Execution timeout reached.
 .TP
 .B 125
 Timeout command error.
 .TP
 .B 126
-Command not found (server unreachable).
+Command not found.
 .\"
 .SH ENVIRONMENT
 .TP
@@ -353,6 +405,15 @@ Override default SSH connect timeout (in seconds). Default is 10.
 .B OKNAV_HOSTS_CONF
 Override path to hosts.conf. Primarily used for testing.
 Takes precedence over default search paths.
+.TP
+.B OKNAV_RELAY
+Override relay host for ok_master. Set to
+.B none
+to disable relay failover. Takes precedence over
+.I /etc/oknav/relay.conf
+but is overridden by the
+.B \-\-relay
+flag.
 .TP
 .B OKNAV_TARGET_DIR
 Override the target directory for
@@ -379,12 +440,17 @@ constraint checking.
 .I /etc/oknav/hosts.conf
 System-wide server configuration file defining FQDNs, aliases, and options.
 This is the primary configuration location after installation.
-During installation, existing files are preserved. If missing, the installer
-uses
-.I hosts.conf
-from the source directory (for local installs), or
+Existing files are preserved during
+.BR "make install" ;
+if missing,
 .I hosts.conf.example
-as a template.
+is installed as a template.
+.TP
+.I /etc/oknav/relay.conf
+Optional relay failover host for ok_master. First non-blank, non-comment
+line is used as the SSH relay target. See
+.B Relay Failover
+above.
 .TP
 .I /usr/local/share/oknav/
 Package directory containing the installed scripts:
@@ -429,6 +495,12 @@ Root shell preserving current directory.
 .TP
 .B srv1 \-D hostname
 Debug mode showing connection parameters.
+.TP
+.B srv1 \-\-relay jump\-host uptime
+Force relay through a specific host.
+.TP
+.B srv1 \-\-no\-relay uptime
+Disable relay failover for this invocation.
 .\"
 .SS Cluster Operations
 .TP
@@ -487,7 +559,7 @@ Remove ad-hoc launchers.
 List all installed host symlinks with their source (hosts.conf or ad-hoc).
 .TP
 .B oknav list \-\-reachable
-List hosts and test SSH connectivity (5-second timeout per host).
+List hosts and test SSH connectivity (3s connect, 10s total per host).
 .TP
 .B oknav list \-R \-p
 Test connectivity in parallel for faster results.
