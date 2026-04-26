@@ -96,7 +96,7 @@ setup_oknav_env() {
   cd "$TEST_TEMP_DIR" || return 1
 
   run ./oknav -D uptime 2>&1
-  assert_output_contains "SERVERS ="
+  assert_output_contains "SERVERS      ="
 }
 
 @test "oknav finds all symlinks matching hosts.conf" {
@@ -178,14 +178,14 @@ setup_oknav_env() {
   setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
   run ./oknav -t 60 -D uptime
-  assert_output_contains "TIMEOUT = 60s"
+  assert_output_contains "TIMEOUT      = 60s"
 }
 
 @test "--timeout sets timeout value" {
   setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
   run ./oknav --timeout 120 -D uptime
-  assert_output_contains "TIMEOUT = 120s"
+  assert_output_contains "TIMEOUT      = 120s"
 }
 
 @test "-t with non-numeric value exits with non-zero" {
@@ -228,7 +228,7 @@ setup_oknav_env() {
   setup_oknav_env
   cd "$TEST_TEMP_DIR" || return 1
   run ./oknav -d -D uptime
-  assert_output_contains "CURDIR  = $TEST_TEMP_DIR"
+  assert_output_contains "CURDIR       = $TEST_TEMP_DIR"
 }
 
 @test "-d passes -d flag to server command" {
@@ -256,7 +256,7 @@ setup_oknav_env() {
   cd "$TEST_TEMP_DIR" || return 1
   run ./oknav -pt 10 -D uptime
   assert_output_contains "parallel"
-  assert_output_contains "TIMEOUT = 10s"
+  assert_output_contains "TIMEOUT      = 10s"
 }
 
 @test "-Dp combines debug and parallel" {
@@ -785,7 +785,7 @@ EOF
   # With --, 'list' is treated as a command to execute
   run ./oknav -D -- list /tmp 2>&1
   # Should show command in debug output, not run list subcommand
-  assert_output_contains 'COMMAND = list /tmp'
+  assert_output_contains 'COMMAND      = list /tmp'
 }
 
 @test "-- works with parallel option" {
@@ -793,8 +793,8 @@ EOF
   cd "$TEST_TEMP_DIR" || return 1
   run ./oknav -p -D -- install 2>&1
   # Should show parallel mode and 'install' as command
-  assert_output_contains "MODE    = parallel"
-  assert_output_contains "COMMAND = install"
+  assert_output_contains "MODE         = parallel"
+  assert_output_contains "COMMAND      = install"
 }
 
 @test "-- at end with no command shows usage" {

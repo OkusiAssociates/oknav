@@ -49,7 +49,7 @@ shopt -s inherit_errexit
 
 # Idempotency guard: allow re-sourcing without readonly re-declare errors
 [[ -z ${_OKNAV_COMMON_LOADED:-} ]] || return 0
-readonly -- _OKNAV_COMMON_LOADED=1
+readonly _OKNAV_COMMON_LOADED=1
 
 # Global configuration
 ### VERSION managed by version
@@ -58,7 +58,7 @@ declare -r VERSION=2.3.8
 
 # Set up runtime directory for temporary files
 # Prefers XDG_RUNTIME_DIR (typically /run/user/UID), falls back to /tmp
-declare -r RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+declare -r RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$UID}
 if [[ ! -d $RUNTIME_DIR ]] || [[ ! -w $RUNTIME_DIR ]]; then
   # Fall back to /tmp if runtime dir not available
   declare -r TEMP_DIR=/tmp
@@ -69,13 +69,14 @@ fi
 # ------------------------------------------------------------------------------
 # Output Control
 # ------------------------------------------------------------------------------
+# Define Messaging Flags (VERBOSE, DEBUG, as/if required)
 declare -ix VERBOSE=1 DEBUG=0
 
-# Colors: enabled only when stdout and stderr are terminals
+# Define Messaging Colors (RED GREEN YELLOW etc, as/if required)
 if [[ -t 1 && -t 2 ]]; then
-  readonly -- RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD=$'\033[1m' NC=$'\033[0m'
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD=$'\033[1m' NC=$'\033[0m'
 else
-  readonly -- RED='' GREEN='' YELLOW='' CYAN='' BOLD='' NC=''
+  declare -r RED='' GREEN='' YELLOW='' CYAN='' BOLD='' NC=''
 fi
 
 # ------------------------------------------------------------------------------
@@ -85,30 +86,19 @@ fi
 # Streams: vecho → stdout, all others → stderr.
 # Prefixes: ◉ info, ▲ warn, ✓ success, ✗ error, 'DEBUG:' for debug.
 # ------------------------------------------------------------------------------
-_msg() {
-  local -- prefix="$SCRIPT_NAME:" msg
-  case "${FUNCNAME[1]}" in
-    vecho)   : ;;
-    info)    prefix+=" ${CYAN}◉${NC}" ;;
-    warn)    prefix+=" ${YELLOW}▲${NC}" ;;
-    success) prefix+=" ${GREEN}✓${NC}" ;;
-    error)   prefix+=" ${RED}✗${NC}" ;;
-    debug)   prefix+=" ${YELLOW}DEBUG:${NC}" ;;
-  esac
-  for msg in "$@"; do printf '%s %s\n' "$prefix" "$msg"; done
-}
-
-vecho()   { ((VERBOSE)) || return 0; _msg "$@"; }     # Verbose echo (stdout)
-info()    { ((VERBOSE)) || return 0; >&2 _msg "$@"; } # Info message (stderr)
-warn()    { ((VERBOSE)) || return 0; >&2 _msg "$@"; } # Warning (stderr)
-success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; } # Success (stderr)
-debug()   { ((DEBUG)) || return 0; >&2 _msg "$@"; }   # Debug (stderr, if DEBUG=1)
-error()   { >&2 _msg "$@"; }                          # Error (always, stderr)
-
+_msg() { >&2 printf "$SCRIPT_NAME: $1 %s\n" "${@:2}"; }
+error()   { _msg "$RED✗$NC" "$@"; }
 # die() - Print error and exit
 # Args: exit_code [message...]
-# Default exit code: 1
-die() { (($# < 2)) || error "${@:2}"; exit "${1:-1}"; }
+die()     { (($# < 2)) || error "${@:2}"; exit "${1:-1}"; }
+# Optional:
+warn()    { _msg "$YELLOW▲$NC" "$@"; }
+#vecho()   { ((VERBOSE)) || return 0; _msg '' "$@"; }
+vecho()   { ((VERBOSE)) || return 0; printf "$SCRIPT_NAME: %s\n" "$@"; }     # Verbose echo (stdout)
+info()    { ((VERBOSE)) || return 0; _msg "$CYAN◉$NC" "$@"; }
+success() { ((VERBOSE)) || return 0; _msg "$GREEN✓$NC" "$@"; }
+debug()   { ((DEBUG)) || return 0; _msg "${RED}DEBUG:$NC" "$@"; }
+
 
 # ------------------------------------------------------------------------------
 # noarg() - Validate that an option has a following argument
@@ -181,7 +171,7 @@ find_hosts_conf() {
 # Dies on: missing file, no valid entries
 # ------------------------------------------------------------------------------
 load_hosts_conf() {
-  local -- hosts_file="${1:-}"
+  local -- hosts_file=${1:-}
   local -- line fqdn aliases options alias
   local -- options_re='[(]([^)]+)[)][[:space:]]*$'
 
@@ -206,11 +196,11 @@ load_hosts_conf() {
     options=''
     if [[ $line =~ $options_re ]]; then
       options="${BASH_REMATCH[1]}"
-      line="${line%\(*}"  # Remove options from line
+      line=${line%\(*}  # Remove options from line
     fi
 
     # Trim trailing whitespace
-    line="${line%"${line##*[![:space:]]}"}"
+    line=${line%"${line##*[![:space:]]}"}
 
     # Split: first field is FQDN, rest are aliases
     read -r fqdn aliases <<< "$line"
@@ -243,14 +233,14 @@ resolve_alias() {
   local -- fqdn options required_host
   local -- local_only_re='local-only:([^,)]+)'
 
-  fqdn="${ALIAS_TO_FQDN[$alias]:-}"
+  fqdn=${ALIAS_TO_FQDN[$alias]:-}
   [[ -n $fqdn ]] || return 1
 
-  options="${ALIAS_OPTIONS[$alias]:-}"
+  options=${ALIAS_OPTIONS[$alias]:-}
 
   # Check local-only constraint
   if [[ $options =~ $local_only_re ]]; then
-    required_host="${BASH_REMATCH[1]}"
+    required_host=${BASH_REMATCH[1]}
     if [[ $HOSTNAME != "$required_host" ]]; then
       error "$alias: restricted to host ${required_host@Q} (current: ${HOSTNAME@Q})"
       return 2
@@ -267,7 +257,7 @@ resolve_alias() {
 # ------------------------------------------------------------------------------
 is_excluded() {
   local -- alias=$1
-  [[ "${ALIAS_OPTIONS[$alias]:-}" == *exclude* ]]
+  [[ ${ALIAS_OPTIONS[$alias]:-} == *exclude* ]]
 }
 
 # ------------------------------------------------------------------------------
@@ -278,8 +268,8 @@ is_excluded() {
 # ------------------------------------------------------------------------------
 is_oknav() {
   local -- alias=$1
-  local -- options="${ALIAS_OPTIONS[$alias]:-}"
-  local -- fqdn="${ALIAS_TO_FQDN[$alias]:-}"
+  local -- options=${ALIAS_OPTIONS[$alias]:-}
+  local -- fqdn=${ALIAS_TO_FQDN[$alias]:-}
   [[ $options == *oknav* ]] || return 1
   [[ ${FQDN_PRIMARY_ALIAS[$fqdn]:-} == "$alias" ]]
 }
@@ -292,7 +282,7 @@ is_oknav() {
 # ------------------------------------------------------------------------------
 get_local_only_host() {
   local -- alias=$1
-  local -- options="${ALIAS_OPTIONS[$alias]:-}"
+  local -- options=${ALIAS_OPTIONS[$alias]:-}
   local -- local_only_re='local-only:([^,)]+)'
   if [[ $options =~ $local_only_re ]]; then
     echo "${BASH_REMATCH[1]}"
