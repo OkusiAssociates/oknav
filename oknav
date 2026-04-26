@@ -73,11 +73,11 @@ cleanup() {
   # Remove tracked temp files
   local -- file
   for file in "${TEMP_FILES[@]}"; do
-    [[ -f $file ]] && rm -f "$file" ||:
+    [[ ! -f $file ]] || rm -f "$file"
   done
   # Remove orphaned temp files (parallel subshells don't update TEMP_FILES)
-  rm -f "${TEMP_DIR:-/tmp}"/"${SCRIPT_NAME:-}"_*_* 2>/dev/null || true
-  rm -f "${TEMP_DIR:-/tmp}"/."${SCRIPT_NAME:-}"_*_tempfile 2>/dev/null || true
+  rm -f "${TEMP_DIR:-/tmp}"/"${SCRIPT_NAME:-}"_*_* 2>/dev/null ||:
+  rm -f "${TEMP_DIR:-/tmp}"/."${SCRIPT_NAME:-}"_*_tempfile 2>/dev/null ||:
   exit "$exitcode"
 }
 trap 'cleanup $?' SIGINT SIGTERM EXIT
@@ -216,8 +216,8 @@ HELP
   for alias_name in "${ALIAS_LIST[@]}"; do
     for reserved in "${reserved_names[@]}"; do
       if [[ $alias_name == "$reserved" ]]; then
-        warn "alias ${alias_name@Q} conflicts with oknav subcommand"
-        warn "  use 'oknav -- $alias_name <cmd>' to execute on this server"
+        warn "alias ${alias_name@Q} conflicts with oknav subcommand" \
+             "  use 'oknav -- $alias_name <cmd>' to execute on this server"
       fi
     done
   done
@@ -228,7 +228,7 @@ HELP
   # Create symlinks for all aliases in hosts.conf
   local -- alias target
   for alias in "${ALIAS_LIST[@]}"; do
-    target="$target_dir/$alias"
+    target="$target_dir"/"$alias"
     if [[ -L $target ]]; then
       if [[ $(readlink "$target") == "$ok_master" ]]; then
         skipped+=1
@@ -252,7 +252,7 @@ HELP
     for link in "$target_dir"/ok*; do
       [[ -L $link ]] || continue
       [[ $(readlink "$link") == "$ok_master" ]] || continue
-      name="${link##*/}"
+      name=${link##*/}
       [[ -z ${ALIAS_TO_FQDN[$name]:-} ]] || continue
       info "  remove: $name (stale)"
       ((dry_run)) || sudo rm -f "$link"
@@ -505,7 +505,7 @@ HELP
     target=$(readlink "$link")
     # Check if symlink target ends with ok_master
     [[ ${target##*/} == ok_master ]] || continue
-    name="${link##*/}"
+    name=${link##*/}
     [[ $name == ok_master ]] && continue ||:
     aliases+=("$name")
   done < <(find "$target_dir" -maxdepth 1 -type l 2>/dev/null | sort)
@@ -532,12 +532,12 @@ HELP
       local -- temp_file
 
       for info in "${host_info[@]}"; do
-        name="${info%%:*}"
+        name=${info%%:*}
         temp_file=$(mktemp "$TEMP_DIR"/oknav_list_"$name"_XXXXXX) || continue
         temp_files+=("$temp_file")
 
         # Background SSH test
-        ( fqdn="${info##*:}"
+        ( fqdn=${info##*:}
           if timeout 10 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
             echo '✓'
           else
@@ -556,9 +556,9 @@ HELP
       local -i i=0
       local -- status
       for info in "${host_info[@]}"; do
-        name="${info%%:*}"
-        source="${info#*:}"
-        source="${source%%:*}"
+        name=${info%%:*}
+        source=${info#*:}
+        source=${source%%:*}
         status=$(<"${temp_files[$i]}") || status='✗'
         printf '%-12s %-10s  %s\n' "$name" "$source" "$status"
         i+=1
@@ -570,9 +570,9 @@ HELP
       # Sequential reachability check
       local -- status
       for info in "${host_info[@]}"; do
-        name="${info%%:*}"
-        source="${info#*:}"
-        source="${source%%:*}"
+        name=${info%%:*}
+        source=${info#*:}
+        source=${source%%:*}
         fqdn="${info##*:}"
         if timeout 10 ssh -o ConnectTimeout=3 -o BatchMode=yes "$fqdn" hostname >/dev/null 2>&1; then
           status='✓'
@@ -585,9 +585,9 @@ HELP
   else
     # No reachability check - just list
     for info in "${host_info[@]}"; do
-      name="${info%%:*}"
-      source="${info#*:}"
-      source="${source%%:*}"
+      name=${info%%:*}
+      source=${info#*:}
+      source=${source%%:*}
       printf '%-12s %s\n' "$name" "$source"
     done
   fi
@@ -611,27 +611,18 @@ while (($#)); do
       [[ $TIMEOUT =~ ^[0-9]+$ ]] || die 22 "Invalid timeout value ${TIMEOUT@Q}" ;;
     -d|--dir)
       # Verify PWD exists (handles edge case of deleted directory)
-      if [[ ! -d $PWD ]]; then
-        die 1 "Current directory does not exist: ${PWD@Q}"
-      fi
+      [[ -d $PWD ]] || die 1 "Current directory does not exist: ${PWD@Q}"
       PRESERVE_DIR=1 ;;
     -D|--debug)
       DEBUG=1 ;;
     -V|--version)
-      echo "$SCRIPT_NAME $VERSION"
-      exit 0 ;;
+      printf '%s\n' "$SCRIPT_NAME" "$VERSION"; exit 0 ;;
     -h|--help|help)
-      usage
-      exit 0 ;;
-    -[xcptdDVh]*) # Handle combined short options (e.g., -pD becomes -p -D)
-                  # Note: -x/-c/-t take arguments and must not be combined
-      #shellcheck disable=SC2046
-      set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+      usage; exit 0 ;;
     --)
-      # End of options, force multi-execute mode (bypass subcommand check)
-      FORCE_EXEC=1
-      shift
-      break ;;
+      shift; FORCE_EXEC=1; break ;;
+    -[xcptdDVh]?*)
+      set -- "${1:0:2}" "-${1:2}" "${@:2}"; continue ;;
     -*)
       die 22 "Invalid option ${1@Q}" ;;
     *)
@@ -707,25 +698,25 @@ done
 # Validate server discovery
 if ((${#SERVERS[@]} == 0)); then
   error 'No cluster servers found'
-  echo >&2
+  >&2 echo
   # Check if command looks like a typo of a subcommand
   if [[ -n ${1:-} ]]; then
-    case "$1" in
+    case $1 in
       instal|instll|inst|nstall)
-        info "Did you mean: oknav install"
+        info 'Did you mean: oknav install'
         info "  (typo detected: ${1@Q})" ;;
       lst|lis|lsit|lits)
-        info "Did you mean: oknav list"
+        info 'Did you mean: oknav list'
         info "  (typo detected: ${1@Q})" ;;
       ad|adds|dad|aad)
-        info "Did you mean: oknav add <hostname>"
+        info 'Did you mean: oknav add <hostname>'
         info "  (typo detected: ${1@Q})" ;;
       remov|rm|del|delete|rmove|reomve)
-        info "Did you mean: oknav remove <alias>"
+        info 'Did you mean: oknav remove <alias>'
         info "  (typo detected: ${1@Q})" ;;
       *)
         info "To run ${1@Q} on cluster servers, ensure hosts.conf has" \
-             "entries with (oknav) option"
+             'entries with (oknav) option'
         ;;
     esac
   else
@@ -739,15 +730,17 @@ fi
 
 # Debug output for server discovery
 if ((DEBUG)); then
-  >&2 echo "DEBUG: Cluster execution:"
-  >&2 echo "  SERVERS = ${SERVERS[*]}"
-  >&2 echo "  COMMAND = $*"
-  >&2 echo "  MODE    = $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')"
-  >&2 echo "  TIMEOUT = ${TIMEOUT}s"
-  >&2 echo "  CONN_TIMEOUT = ${CONNECT_TIMEOUT}s"
-  ((${#ok_server_excludes[@]})) && >&2 echo "  EXCLUDE = ${ok_server_excludes[*]}"
-  ((PRESERVE_DIR)) && >&2 echo "  CURDIR  = $PWD" ||:
-  >&2 echo
+  >&2 cat <<DEBUG
+$SCRIPT_NAME: DEBUG: Cluster execution:
+  SERVERS      = ${SERVERS[@]@Q}
+  COMMAND      = $*
+  MODE         = $( ((PARALLEL)) && echo 'parallel' || echo 'sequential')
+  PRESERVE_DIR = $( ((PRESERVE_DIR)) && echo 'on' || echo 'off')
+  CURDIR       = $PWD
+  TIMEOUT      = ${TIMEOUT}s
+  CONN_TIMEOUT = ${CONNECT_TIMEOUT}s
+  EXCLUDE      = ${ok_server_excludes[*]:-}
+DEBUG
 fi
 
 # ------------------------------------------------------------------------------
@@ -758,8 +751,7 @@ fi
 # Timeout codes 124/125/126 are reported as output messages, not return codes
 # ------------------------------------------------------------------------------
 run_command() {
-  local -- server=$1
-  local -- temp_file
+  local -- server=$1 temp_file
   shift
 
   temp_file=$(mktemp "$TEMP_DIR"/"$SCRIPT_NAME"_"$server"_XXXXXX) || {
@@ -799,17 +791,18 @@ if (( PARALLEL )); then
 
   # Wait for all background processes
   for pid in "${pids[@]}"; do
-    wait "$pid" || true
+    wait "$pid" ||:
   done
 
   # Display outputs in server order (not completion order)
+
   for server in "${SERVERS[@]}"; do
     temp_file_path="$TEMP_DIR"/."$SCRIPT_NAME"_"$server"_tempfile
     if [[ -f $temp_file_path ]]; then
       temp_file=$(<"$temp_file_path")
       if [[ -f $temp_file ]]; then
-        ((first)) && echo || first=1
-        cat "$temp_file"
+        ((first)) && printf '\n' || first=1
+        cat -s "$temp_file"
       else
         warn "Output file for ${server@Q} not found"
       fi
@@ -821,11 +814,11 @@ else
   # SEQUENTIAL MODE: Execute on each server in order, display immediately
   # --------------------------------------------------------------------------
   for server in "${SERVERS[@]}"; do
-    ((first)) && echo || first=1
+    ((first)) && printf '\n' || first=1
     echo "+++$server:"
     #shellcheck disable=SC2046  # preserve_dir/connect_timeout_opt output flags (no spaces to worry about)
     timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" \
-      || report_timeout_error "$server" "$?" ||:
+      || report_timeout_error "$server" $? ||:
     echo
   done
 fi
