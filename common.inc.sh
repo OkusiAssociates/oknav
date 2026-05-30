@@ -215,6 +215,11 @@ load_hosts_conf() {
     # Register each alias (first alias becomes primary)
     local -- first_alias=''
     for alias in $aliases; do
+      # First-wins on duplicate alias: warn and skip to avoid double execution
+      if [[ -n ${ALIAS_TO_FQDN[$alias]:-} ]]; then
+        warn "duplicate alias ${alias@Q}: keeping ${ALIAS_TO_FQDN[$alias]@Q}, ignoring ${fqdn@Q}"
+        continue
+      fi
       ALIAS_TO_FQDN["$alias"]=$fqdn
       ALIAS_OPTIONS["$alias"]=$options
       ALIAS_LIST+=("$alias")

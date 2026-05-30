@@ -26,7 +26,8 @@
 # Per-server status codes (from timeout(1), shown as output messages):
 #   124  Execution timeout
 #   125  Timeout command error
-#   126  Command not found
+#   126  Command found but not executable
+#   127  Command not found
 #
 # Related:
 #   ok_master      - Individual server SSH handler
@@ -52,15 +53,14 @@ declare -i PARALLEL=0              # Execution mode: 0=sequential, 1=parallel
 declare -i TIMEOUT=${TIMEOUT:-120} # Per-server execution timeout in seconds
 declare -i CONNECT_TIMEOUT=${OKNAV_CONNECT_TIMEOUT:-10}  # SSH handshake timeout
 declare -i FORCE_EXEC=0            # Force multi-execute mode (bypass subcommands)
-declare -a TEMP_FILES=()           # Temp files to clean up on exit
 declare -a ok_server_excludes=()   # Servers excluded via -x option
 declare -i PRESERVE_DIR=0          # Pass -d to server commands
+declare -- RUN_DIR=''              # Per-invocation temp dir (parallel modes only)
 
 # Working variables (declared here to satisfy strict mode)
 declare -- server                  # Current server alias being processed
 declare -- pid                     # Background process ID (parallel mode)
-declare -- temp_file               # Path to server output temp file
-declare -- temp_file_path          # Path to temp file reference marker
+declare -- out                     # Path to a server's captured output (parallel mode)
 
 # ------------------------------------------------------------------------------
 # cleanup() - Remove temporary files and exit
@@ -70,17 +70,23 @@ declare -- temp_file_path          # Path to temp file reference marker
 cleanup() {
   local -i exitcode=${1:-0}
   trap - SIGINT SIGTERM EXIT  # Prevent recursion
-  # Remove tracked temp files
-  local -- file
-  for file in "${TEMP_FILES[@]}"; do
-    [[ ! -f $file ]] || rm -f "$file"
-  done
-  # Remove orphaned temp files (parallel subshells don't update TEMP_FILES)
-  rm -f "${TEMP_DIR:-/tmp}"/"${SCRIPT_NAME:-}"_*_* 2>/dev/null ||:
-  rm -f "${TEMP_DIR:-/tmp}"/."${SCRIPT_NAME:-}"_*_tempfile 2>/dev/null ||:
+  # Remove the per-invocation temp dir and everything under it (parallel modes).
+  # All parallel temp files live inside RUN_DIR, so one rm -rf is sufficient.
+  [[ -z ${RUN_DIR:-} || ! -d $RUN_DIR ]] || rm -rf "${RUN_DIR:?}"
   exit "$exitcode"
 }
 trap 'cleanup $?' SIGINT SIGTERM EXIT
+
+# ------------------------------------------------------------------------------
+# ensure_run_dir() - Create the per-invocation temp dir on first use
+# Idempotent; only the parallel execution paths (cluster -p, list -Rp) need it.
+# Sets: RUN_DIR (global). Dies 1 if the directory cannot be created.
+# ------------------------------------------------------------------------------
+ensure_run_dir() {
+  [[ -z $RUN_DIR ]] || return 0
+  RUN_DIR=$(mktemp -d "$TEMP_DIR"/"$SCRIPT_NAME".XXXXXX) \
+    || die 1 'Cannot create temporary run directory'
+}
 
 # ------------------------------------------------------------------------------
 # preserve_dir() - Output -d flag if directory preservation enabled
@@ -99,7 +105,7 @@ connect_timeout_opt() { echo "-c $CONNECT_TIMEOUT"; }
 # ------------------------------------------------------------------------------
 # report_timeout_error() - Emit human-readable message for timeout/exec codes
 # Args: server_alias exit_code
-# Outputs: descriptive message for codes 124/125/126 (nothing for others)
+# Outputs: descriptive message for codes 124/125/126/127 (nothing for others)
 # Called from both sequential and parallel execution paths
 # Returns: 0 always (safe for set -e callers via `|| ... ||:`)
 # ------------------------------------------------------------------------------
@@ -109,7 +115,8 @@ report_timeout_error() {
   case $rc in
     124) echo "Execution timeout after $TIMEOUT seconds" ;;
     125) echo 'Timeout command error' ;;
-    126) echo "Command not found ${srv@Q}" ;;
+    126) echo "Command found but not executable ${srv@Q}" ;;
+    127) echo "Command not found ${srv@Q}" ;;
   esac
 }
 
@@ -535,10 +542,11 @@ HELP
       # Parallel reachability check
       local -a pids=() temp_files=()
       local -- temp_file
+      ensure_run_dir
 
       for info in "${host_info[@]}"; do
         name=${info%%:*}
-        temp_file=$(mktemp "$TEMP_DIR"/oknav_list_"$name"_XXXXXX) || continue
+        temp_file=$(mktemp "$RUN_DIR"/oknav_list_"$name"_XXXXXX) || continue
         temp_files+=("$temp_file")
 
         # Background SSH test
@@ -608,12 +616,12 @@ while (($#)); do
       PARALLEL=1 ;;
     -c|--connect-timeout)
       noarg "$@"; shift
-      CONNECT_TIMEOUT=$1
-      [[ $CONNECT_TIMEOUT =~ ^[0-9]+$ ]] || die 22 "Invalid connect-timeout value ${CONNECT_TIMEOUT@Q}" ;;
+      [[ $1 =~ ^[0-9]+$ ]] || die 22 "Invalid connect-timeout value ${1@Q}"
+      CONNECT_TIMEOUT=$1 ;;
     -t|--timeout)
       noarg "$@"; shift
-      TIMEOUT=$1
-      [[ $TIMEOUT =~ ^[0-9]+$ ]] || die 22 "Invalid timeout value ${TIMEOUT@Q}" ;;
+      [[ $1 =~ ^[0-9]+$ ]] || die 22 "Invalid timeout value ${1@Q}"
+      TIMEOUT=$1 ;;
     -d|--dir)
       # Verify PWD exists (handles edge case of deleted directory)
       [[ -d $PWD ]] || die 1 "Current directory does not exist: ${PWD@Q}"
@@ -750,32 +758,26 @@ fi
 
 # ------------------------------------------------------------------------------
 # run_command() - Execute command on single server (parallel mode helper)
-# Captures output to temp file for ordered display after all complete.
+# Captures output to "$RUN_DIR/$server" for ordered display after all complete.
 # Args: server command [args...]
-# Returns: 0 always (errors handled internally), 1 temp file creation failed
-# Timeout codes 124/125/126 are reported as output messages, not return codes
+# Returns: 0 always (errors handled internally)
+# Timeout codes 124/125/126/127 are reported as output messages, not return codes
+# Precondition: ensure_run_dir has been called (RUN_DIR exists)
 # ------------------------------------------------------------------------------
 run_command() {
-  local -- server=$1 temp_file
+  local -- server=$1
   shift
+  local -- out="$RUN_DIR/$server"
 
-  temp_file=$(mktemp "$TEMP_DIR"/"$SCRIPT_NAME"_"$server"_XXXXXX) || {
-    error "Cannot create temporary file for ${server@Q}"
-    return 1
-  }
-  TEMP_FILES+=("$temp_file")
-
-  # Capture all output (stdout + stderr) to temp file
+  # Capture all output (stdout + stderr) to the server's run-scoped file. The
+  # deterministic name lets the parent collect output without a reference
+  # marker; RUN_DIR is per-invocation so concurrent oknav runs never clash.
   { echo "+++$server:"
     #shellcheck disable=SC2046  # preserve_dir/connect_timeout_opt output flags (no spaces to worry about)
-    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" \
+    timeout "$TIMEOUT" sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" \
       || report_timeout_error "$server" "$?" ||:
     echo
-  } &> "$temp_file"
-
-  # Write reference file for output collection phase
-  echo "$temp_file" > "$TEMP_DIR"/."$SCRIPT_NAME"_"$server"_tempfile
-  TEMP_FILES+=("$TEMP_DIR"/."$SCRIPT_NAME"_"$server"_tempfile)
+  } &> "$out"
 }
 
 # ==============================================================================
@@ -788,6 +790,7 @@ if (( PARALLEL )); then
   # PARALLEL MODE: All servers execute simultaneously, output collected after
   # --------------------------------------------------------------------------
   declare -a pids=()
+  ensure_run_dir
 
   for server in "${SERVERS[@]}"; do
     run_command "$server" "$@" &
@@ -800,18 +803,13 @@ if (( PARALLEL )); then
   done
 
   # Display outputs in server order (not completion order)
-
   for server in "${SERVERS[@]}"; do
-    temp_file_path="$TEMP_DIR"/."$SCRIPT_NAME"_"$server"_tempfile
-    if [[ -f $temp_file_path ]]; then
-      temp_file=$(<"$temp_file_path")
-      if [[ -f $temp_file ]]; then
-        ((first)) && printf '\n' || first=1
-        cat -s "$temp_file"
-      else
-        warn "Output file for ${server@Q} not found"
-      fi
-      rm -f "$temp_file_path"
+    out="$RUN_DIR/$server"
+    if [[ -f $out ]]; then
+      ((first)) && printf '\n' || first=1
+      cat -s "$out"
+    else
+      warn "Output file for ${server@Q} not found"
     fi
   done
 else
@@ -822,7 +820,7 @@ else
     ((first)) && printf '\n' || first=1
     echo "+++$server:"
     #shellcheck disable=SC2046  # preserve_dir/connect_timeout_opt output flags (no spaces to worry about)
-    timeout "$TIMEOUT"s sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" \
+    timeout "$TIMEOUT" sudo "$server" $(preserve_dir) $(connect_timeout_opt) "$@" \
       || report_timeout_error "$server" $? ||:
     echo
   done

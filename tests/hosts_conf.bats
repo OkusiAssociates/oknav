@@ -185,7 +185,7 @@ EOF
   [[ "$output" == "fqdn=server.local opts=EMPTY" ]]
 }
 
-@test "load_hosts_conf last-write-wins on duplicate alias" {
+@test "load_hosts_conf first-wins on duplicate alias (warns)" {
   cat > "${TEST_TEMP_DIR}/hosts.conf" <<'EOF'
 server1.local  dup
 server2.local  dup
@@ -199,8 +199,9 @@ EOF
     echo "${ALIAS_TO_FQDN[dup]}"
   '
   ((status == 0))
-  # Current behaviour: second entry overwrites first.
-  [[ "$output" == "server2.local" ]]
+  # New behaviour: first entry wins, duplicate is warned and skipped.
+  [[ "${lines[-1]}" == "server1.local" ]]
+  [[ "$output" == *"duplicate alias"* ]]
 }
 
 @test "load_hosts_conf silently skips line with FQDN but no alias" {

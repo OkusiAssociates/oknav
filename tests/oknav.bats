@@ -421,6 +421,37 @@ setup_oknav_env() {
   ((status == 0))
 }
 
+@test "parallel mode cleans up its run dir on exit" {
+  setup_oknav_env ok0 ok1
+  mkdir -p "${TEST_TEMP_DIR}/runtime"
+  export XDG_RUNTIME_DIR="${TEST_TEMP_DIR}/runtime"
+  cd "$TEST_TEMP_DIR" || return 1
+
+  run ./oknav -p uptime
+  ((status == 0))
+  # The per-invocation RUN_DIR (oknav.XXXXXX) must be removed by cleanup()
+  run find "${TEST_TEMP_DIR}/runtime" -maxdepth 1 -type d -name 'oknav.*'
+  [[ -z "$output" ]]
+}
+
+@test "parallel mode dies cleanly when run dir cannot be created" {
+  setup_oknav_env ok0 ok1
+  # Mock mktemp to fail only for directory creation (-d); pass through otherwise
+  cat > "${MOCK_BIN}/mktemp" <<'EOF'
+#!/bin/bash
+for a in "$@"; do
+  [[ $a == -d ]] && exit 1
+done
+exec /usr/bin/mktemp "$@"
+EOF
+  chmod +x "${MOCK_BIN}/mktemp"
+  cd "$TEST_TEMP_DIR" || return 1
+
+  run ./oknav -p uptime
+  ((status == 1))
+  [[ "$output" == *"temporary run directory"* ]]
+}
+
 # ==============================================================================
 # Timeout Handling Tests
 # ==============================================================================
@@ -431,7 +462,7 @@ setup_oknav_env() {
 
   run ./oknav uptime
   # Timeout mock should have been called with default timeout
-  assert_mock_called "TIMEOUT_CALL" "120s"
+  assert_mock_called "TIMEOUT_CALL" "120"
 }
 
 @test "custom timeout value is passed to timeout command" {
@@ -439,7 +470,7 @@ setup_oknav_env() {
   cd "$TEST_TEMP_DIR" || return 1
 
   run ./oknav -t 60 uptime
-  assert_mock_called "TIMEOUT_CALL" "60s"
+  assert_mock_called "TIMEOUT_CALL" "60"
 }
 
 @test "timeout exit 124 shows execution timeout message" {
