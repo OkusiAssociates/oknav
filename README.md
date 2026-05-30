@@ -366,7 +366,7 @@ bats tests/oknav.bats --filter "parallel"
 | 1 | both | General error |
 | 2 | ok_master | Local-only constraint violated |
 | 22 | both | Invalid option (EINVAL) |
-| 42 | ok_master | Direct execution (must use symlink) |
+| 21 | ok_master | Direct execution (must use symlink) |
 
 **Per-server status codes** (from `timeout(1)`, shown as output messages by `oknav` — absorbed, not propagated as exit codes):
 
@@ -374,7 +374,8 @@ bats tests/oknav.bats --filter "parallel"
 |------|---------|
 | 124 | Execution timeout reached |
 | 125 | Timeout command error |
-| 126 | Command not found |
+| 126 | Command found but not executable |
+| 127 | Command not found |
 
 ### Environment Variables
 

@@ -301,4 +301,19 @@ run_ok_master_debug() {
   assert_output_contains "ls -la /etc"
 }
 
+# ==============================================================================
+# Direct Invocation Guard (must run via symlink, not as ok_master)
+# ==============================================================================
+
+@test "ok_master invoked directly (not via symlink) exits 21" {
+  # create_server_symlinks copies ok_master + common.inc.sh into the temp dir;
+  # running ./ok_master (not a symlink) must trip the must-invoke-via-symlink
+  # guard. This pins the documented exit code so docs/behaviour cannot diverge.
+  create_server_symlinks "$TEST_TEMP_DIR" ok0
+  cd "$TEST_TEMP_DIR" || return 1
+  run ./ok_master uptime
+  ((status == 21))
+  assert_output_contains "Cannot run"
+}
+
 #fin

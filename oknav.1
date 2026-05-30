@@ -385,7 +385,7 @@ restricted to a specific host and the current hostname does not match.
 .B 22
 Invalid command-line option (EINVAL).
 .TP
-.B 42
+.B 21
 Direct ok_master execution. The ok_master script must be invoked
 via a symlink (e.g., srv1), not directly as ok_master.
 .PP
@@ -404,6 +404,9 @@ Execution timeout reached.
 Timeout command error.
 .TP
 .B 126
+Command found but not executable.
+.TP
+.B 127
 Command not found.
 .\"
 .SH ENVIRONMENT
